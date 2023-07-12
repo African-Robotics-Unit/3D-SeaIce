@@ -3,6 +3,7 @@
 MSc student: Agoritsa Spirakis
 Supervisor: Robyn Verrinder
 Co-supervisor: James Hepworth
+# IGARSS 2023
 
 # Pipeline explanation
 ## ExtractLiDAR.mlx
