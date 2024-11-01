@@ -5,6 +5,9 @@ The purpose of this step is to extract the data from a variety of collection met
 Ouput:
 -	arrRS = array of point clouds from Realsense
 -	arrLiDAR = array of point clouds from Livox Avia 
+
+
+
 | First Header  | Second Header |
 | ------------- | ------------- |
 | LiDAR (ROS1)              | rosGetRaw        |
