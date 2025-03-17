@@ -5,15 +5,18 @@ function [arrTforms,arrRotated,arrShifted] = matrix_alignClouds(arrLiDAR,x,y,a_l
 arrDist=[a_len,b_len,c_len,d_len,e_len,f_len,g_len,h_len];
 croppedClouds=arrLiDAR;
 arrShifted=arrLiDAR;
+denoisedClouds=arrLiDAR;
 for k=1:length(arrDist)
     %align floor
     floorAlign=alignFloor(arrLiDAR(k));
     %crop floor out
     [sortedPOI,arrIndex,palletIndex,floorIndex,surfIndex] = normsAnalysis(floorAlign);
     croppedClouds(k)=cropCloud(floorAlign,[-inf,inf],[-inf,inf],[sortedPOI(floorIndex+1)+0.02,inf]);
+    %outlier removal
+    denoisedClouds(k)=outlierRemoval(croppedClouds(k),20);
     %shift by x by arrDist +0.2
     xshift=rigidtform3d(eye(3), [-1*(arrDist(k)+0.2),0,0]);
-    arrShifted(k)=pctransform(croppedClouds(k),xshift);
+    arrShifted(k)=pctransform(denoisedClouds(k),xshift);
 end
 
 %generate transforms (matrix_align)
