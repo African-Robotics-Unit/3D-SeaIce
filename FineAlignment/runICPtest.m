@@ -3,10 +3,13 @@ addpath(genpath("C:\Users\agori\Documents\MATLAB\3D-Sea-Ice\FineAlignment\GliraI
 %icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\appDesign\ICPtestA\P3clean\','C:\Users\agori\Documents\MATLAB\MSc\appDesign\ICPtestA\P3ICP\');
 
 %icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\BeforeAlignment\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\AfterNew\');
-icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\BeforeOutlierRemoved\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\AfterOutlierRemoved\');
+%icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\BeforeOutlierRemoved\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\AfterOutlierRemoved\');
 
+%icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\FilteredBeforeICP\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\FilteredAfterICP\')
+
+
+icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\ObliqueBefore\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\ObliqueAfter\');
 figure; icptest.plot('Color', 'by PC');
-
 %ICPOptions.NoOfTransfParam          = 6; %Rigid body transform
 %ICPOptions.NoOfTransfParam          = 3; %Rigid body transform
 ICPOptions.NoOfTransfParam          = 6;
@@ -18,4 +21,5 @@ ICPOptions.Plot                     = true;
 
 icptest.runICP(ICPOptions);
 
-saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\AfterOutlierRemoved\',8);
+%saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\FilteredAfterICP\',8);
+saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\ObliqueAfter\',4);
