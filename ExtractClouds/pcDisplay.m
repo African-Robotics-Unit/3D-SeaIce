@@ -4,9 +4,9 @@ function pcDisplay(varargin)
 
     % Call the original pcshow function
     pcshow(varargin{:}, 'AxesVisibility', 'on');
-    
+    set(gca, 'FontName', 'CMU Bright');
     % Add axis labels
-    xlabel('X');
-    ylabel('Y');
-    zlabel('Z');
+    xlabel('X (m)');
+    ylabel('Y (m)');
+    zlabel('Z (m)');
 end
