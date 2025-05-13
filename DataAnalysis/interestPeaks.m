@@ -1,4 +1,4 @@
-function [output] = interestPeaks(F,n,cutoff)
+function [output] = interestPeaks(F,X,Y,n,cutoff)
 %UNTITLED2 Summary of this function goes here
 %   Detailed explanation goes here
 X_interest_all = [];
@@ -53,7 +53,8 @@ for i = 1:n
             end
         end
     end
-    arrPeaksAll(i)=sortedPOI(floorIndex);
+    %arrPeaksAll(i)=sortedPOI(floorIndex);
+    arrPeaksAll(i)=0;
     if found
         trough_X_interest_all = [trough_X_interest_all, X(i, originalIndices(idxFound))];
         trough_Y_interest_all = [trough_Y_interest_all, Y(i, originalIndices(idxFound))];

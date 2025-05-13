@@ -1,4 +1,4 @@
-function [F] = interpolateCloud(pcNew, scale)
+function [F,X,Y] = interpolateCloud(pcNew, scale)
 x = double(pcNew.Location(:,1));
 y = double(pcNew.Location(:,2));
 f = double(pcNew.Location(:,3));
