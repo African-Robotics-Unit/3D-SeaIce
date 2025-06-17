@@ -34,8 +34,12 @@ for i = 1:n
     %[zMaxSorted, sortIdx] = sort(zsample(localMaximaIndices)); 
     idxMaxSorted = localMaximaIndices(sortIdx);
     %arrDiff = zeros(1, length(localMiniIndices));
-
-    topValidx=idxMaxSorted(1);
+    
+    if length(idxMaxSorted)>1
+        topValidx=idxMaxSorted(1);
+    else
+        topValidx=idxMaxSorted;
+    end
 
     found=false;
     arrDiff=[];
