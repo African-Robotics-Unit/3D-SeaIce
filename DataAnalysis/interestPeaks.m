@@ -44,6 +44,7 @@ for i = 1:n
     found=false;
     arrDiff=[];
     for k = idxMaxSorted(1):-1:1
+   %for k = topValidx:-1:1
         % Check if k is in localMiniIndices
         if ismember(k, localMiniIndices)
             diffval = zMaxSorted(1) - zsample(k);

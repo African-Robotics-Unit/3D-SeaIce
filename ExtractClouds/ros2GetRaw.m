@@ -1,7 +1,20 @@
 function [all_cloudsLiDAR, all_cloudsRS, fnames] =ros2GetRaw(pathname)
-%UNTITLED4 Summary of this function goes here
-%   Detailed explanation goes here
-%pathname="C:\Users\agori\Documents\MATLAB\MSc\appDesign\ExtractPC\PancakeALiDAR\";
+%MYFUNCTION Performs a sample operation on inputs.
+%   [OUT1, OUT2] = MYFUNCTION(IN1, IN2) takes two inputs and returns
+%   two outputs after performing some operations.
+%
+%   Inputs:
+%       IN1 - Description of the first input (e.g., numeric vector)
+%       IN2 - Description of the second input (e.g., scalar value)
+%
+%   Outputs:
+%       OUT1 - First output, calculated based on IN1 and IN2
+%       OUT2 - Second output, derived from some processing
+%
+%   Example:
+%       [a, b] = myFunction([1 2 3], 5);
+%
+%   See also OTHERFUNCTION, ANOTHERFUNCTION
 
 files = dir(strcat(pathname, 'rosbag2*'));
 files = files([files.isdir]); % Ensure only directories
