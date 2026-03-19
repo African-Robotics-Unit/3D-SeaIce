@@ -14,7 +14,11 @@ addpath(genpath("C:\Users\agori\Documents\MATLAB\3D-Sea-Ice\FineAlignment\"));
 %icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_Before\','C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_AfterTest1\');
 %icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_BeforeH2new\','C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\afterTesting\');
 
-icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_BeforeNewTform\','C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_AfterNewTform\');
+%icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_BeforeNewTform\','C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_AfterNewTform\');
+
+
+%icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\adjustedRaw2026\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\adjustedRaw2026AFTER\');
+icptest=runGliraICP('C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\newAdjusted2026\','C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\newAdjusted2026AFTER\');
 
 figure; icptest.plot('Color', 'by PC');
 %ICPOptions.NoOfTransfParam          = 6; %Rigid body transform
@@ -28,5 +32,6 @@ ICPOptions.Plot                     = true;
 
 icptest.runICP(ICPOptions);
 
+saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\newAdjusted2026AFTER\',8);
 %saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\Validation\2blocksROS2\FilteredAfterICP\',8);
-saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_AfterNewTform\',8);
+%saveICPclouds(icptest, 'C:\Users\agori\Documents\MATLAB\MSc\CRUISE-DATA\P3processing\P3_AfterNewTform\',8);

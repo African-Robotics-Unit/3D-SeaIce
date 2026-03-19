@@ -32,6 +32,9 @@ points = pcCropped.Location;
 denoisedPoints = points(idx,:);
 outlierPts = points(idxOutliers,:);
 
+intensity = pcCropped.Intensity;
+denoisedIntensity = intensity(idx);
+outlierIntensity = intensity(idxOutliers);
 
 
 
@@ -49,6 +52,6 @@ if showGraph
     scatter(xOut,yOut,sz,'red','filled');
     hold off;
  end
-pcDenoised = pointCloud(denoisedPoints);
-%pcDenoised = pointCloud(denoisedPoints, 'Intensity', denoisedIntensity);
+%pcDenoised = pointCloud(denoisedPoints);
+pcDenoised = pointCloud(denoisedPoints, 'Intensity', denoisedIntensity);
 end

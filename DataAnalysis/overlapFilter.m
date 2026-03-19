@@ -45,8 +45,16 @@ function [arrFiltered,arrOutliers] = overlapFilter(arrClouds)
             end
         end
         % Filter points based on mask
-        filteredPoints = pointCloud(points1(validMask, :));
-        outlierPoints = pointCloud(points1(~validMask, :));
+        %filteredPoints = pointCloud(points1(validMask, :));
+       % outlierPoints = pointCloud(points1(~validMask, :));
+
+        intensity1 = pc1.Intensity;
+        filteredInt= intensity1(validMask);
+        outlierInt=intensity1(~validMask);
+        
+        filteredPoints = pointCloud(points1(validMask, :),'Intensity',filteredInt);
+        outlierPoints = pointCloud(points1(~validMask, :),'Intensity',outlierInt);
+
         arrFiltered(k)=filteredPoints;
         arrOutliers(k)=outlierPoints;
     end
