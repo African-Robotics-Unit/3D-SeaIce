@@ -1,0 +1,13 @@
+{
+    "preprocessing" : {
+        "raw_path": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
+        "roi": {
+            "x": [0, 7],
+            "y": [-5, 5],
+            "z": ["-inf", 2]
+        },
+        "nclouds" : 50,
+        "grid_step": 0.01,
+        "random_seed": 1
+    }
+}
