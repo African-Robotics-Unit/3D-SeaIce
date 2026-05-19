@@ -13,5 +13,6 @@ for k=1:length(arrClouds)
    % curFname = exportPath + fname + "-" + arrLetters{k} + ".ply";
     curFname= strcat(exportPath,fname,arrLetters{k},".ply");
     strings=curFname;
-    pcwrite(arrClouds(k), curFname);
+    %pcwrite(arrClouds(k), curFname);
+    writePLYIntensity(curFname, arrClouds(k));
 end

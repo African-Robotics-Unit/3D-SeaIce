@@ -1,4 +1,4 @@
-function [processed_pointCloudArray] = cropMergeDownsample(roi,nclouds,DSgridstep,all_clouds)
+function [processed_pointCloudArray] = cropMergeDownsample(roi,nclouds,DSgridstep,all_clouds, startCloud)
 %CROPMERGEDOWNSAMPLE Converts all_clouds into an array with a single
 %pointcloud per viewpoint
 %   Input:
@@ -16,6 +16,9 @@ function [processed_pointCloudArray] = cropMergeDownsample(roi,nclouds,DSgridste
 %
 %       arrLiDAR=cropMergeDownsample(roi,50,0.01,all_clouds(2:end));
 
+if nargin < 5
+    startCloud=10;
+end   
 nviews=length(all_clouds);
 croppedClouds=cell(1,nviews);
 cur_pointCloudArray = repmat(pointCloud(zeros(0,3)),1, nclouds);
@@ -27,7 +30,7 @@ sizes_proc=cell(nviews,1);
 for k=1:nviews
     curView=all_clouds{1,k};
     cur_pointCloudArray = repmat(pointCloud(zeros(0,3)),1, nclouds);
-    for i=10:(nclouds+10)
+    for i=startCloud:(nclouds+startCloud)
         curCloud=curView{1,i};
         indices = findPointsInROI(curCloud,roi);
         croppedCloud = select(curCloud, indices);

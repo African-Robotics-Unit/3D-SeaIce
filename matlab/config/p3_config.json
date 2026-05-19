@@ -1,13 +1,22 @@
 {
-    "preprocessing" : {
-        "raw_path": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
+    "outputFolder" : "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/outputTest/",
+    "preprocessing" :  {
+        "pathname": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
         "roi": {
-            "x": [0, 7],
-            "y": [-5, 5],
-            "z": ["-inf", 2]
+            "x": ["0", "7"],
+            "y": ["-5", "5"],
+            "z": ["-inf", "2"]
         },
         "nclouds" : 50,
-        "grid_step": 0.01,
-        "random_seed": 1
+        "gridStep": 0.01,
+        "seed": 1,
+        "startCloud" : 10,
+        "scanOrder" : "HABCDGFE",
+        "save_arrLiDAR" : true,
+        "save_arrLiDARfolder" : "arrLiDAR/",
+        "save_arrLiDARname" : "P3",
+        "coarseALN" : "C:/Users/agori/Documents/MATLAB/MSc/CRUISE-DATA/A-H2aligned.aln",
+        "beforeICPpath" : "BeforeICP/",
+        "fname" : "P3"
     }
 }
