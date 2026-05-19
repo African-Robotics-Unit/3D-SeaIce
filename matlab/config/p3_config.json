@@ -1,5 +1,5 @@
 {
-    "outputFolder" : "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/outputTest/",
+    "outputFolder" : "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/outputTest2/",
     "preprocessing" :  {
         "pathname": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
         "roi": {
@@ -17,6 +17,20 @@
         "save_arrLiDARname" : "P3",
         "coarseALN" : "C:/Users/agori/Documents/MATLAB/MSc/CRUISE-DATA/A-H2aligned.aln",
         "beforeICPpath" : "BeforeICP/",
-        "fname" : "P3"
-    }
+        "afterICPpath" : "AfterICP/",
+        "fname" : "P3",
+        "postFloorROI": {
+            "x": ["1.25", "5"],
+            "y": ["-3", "3"],
+            "z": ["-inf", "1"]
+        }
+    },
+    "ICPOptions": {
+        "NoOfTransfParam": 6,
+        "UniformSamplingDistance": 0.2,
+        "PlaneSearchRadius": 0.1,
+        "MaxRoughness": 0.02,
+        "LogLevel": "debug",
+        "Plot": true
+  }
 }
