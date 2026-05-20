@@ -47,14 +47,10 @@ function postICPfiltering(configpath)
     logInfo(sprintf("Intensity filtering complete (+%.3fs)", toc(tStage)));
 
     if params.overlapFilter
-        logInfo("Performing overlap filter, this may take a while.")
+        logInfo("Performing overlap filter")
         %Apply overlap filter
         [arrFiltered,arrOutliers] = overlapFilterOptimal(arrIntensityFilt);       
-        totalTimeFilter = toc(tStage);
-        hours = floor(totalTimeFilter / 3600);
-        minutes = floor(mod(totalTimeFilter, 3600) / 60);
-        seconds = mod(totalTimeFilter, 60);
-        logInfo(sprintf("Overlap filter completed in = %02dh:%02dm:%05.2fs. Thank you for waiting :)",hours, minutes, seconds));
+        logInfo(sprintf("Overlap filter complete (+%.3fs)", toc(tStage)));
     end
     
     totalFilt=pccat(arrFiltered);
