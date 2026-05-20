@@ -1,5 +1,5 @@
 {
-    "outputFolder" : "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/outputTest2/",
+    "outputFolder" : "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/outputTest/",
     "preprocessing" :  {
         "pathname": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
         "roi": {
@@ -32,5 +32,10 @@
         "MaxRoughness": 0.02,
         "LogLevel": "debug",
         "Plot": true
-  }
+  },
+  "intensityFilter" : {
+    "intensityMin" : 0,
+    "intensityMax" : 140
+  },
+  "overlapFilter" : true
 }

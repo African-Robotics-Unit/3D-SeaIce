@@ -124,9 +124,11 @@ function arrLiDAR_ordered = preprocessClouds(configpath)
     arrTformsRigid=extractALNtransformRigid(params.preprocessing.coarseALN);
     arrCoarse = applyRStforms(arrLiDAR_rotated,arrTformsRigid);
     BeforeICPpath=strcat(outputFolder,params.preprocessing.beforeICPpath);
-
+    
     logInfo(sprintf("Saving coarse aligned clouds to  %s", BeforeICPpath));
     saveClouds(arrCoarse,BeforeICPpath,params.preprocessing.fname);
+    matFilename = strcat(BeforeICPpath, "beforeICP.mat");
+    save(matFilename,"arrCoarse");
     logInfo(sprintf("Coarse alignment completed and saved (+%.3fs)", toc(tStage)));
     
     totalTime = toc(tTotal);

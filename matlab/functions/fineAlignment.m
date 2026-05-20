@@ -25,7 +25,7 @@ function fineAlignment(configpath)
     ICPOptions.MaxRoughness            = params.ICPOptions.MaxRoughness;
     ICPOptions.LogLevel                = params.ICPOptions.LogLevel;
     ICPOptions.Plot                    = params.ICPOptions.Plot;
-
+    rng(1);
     icptest.runICP(ICPOptions);
 
 
