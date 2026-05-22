@@ -5,7 +5,7 @@ import pyvista as pv
 import pandas as pd
 from pcdisplay import show_pointcloud_intensity
 from rosbags.highlevel import AnyReader
-
+from extractclouds import ros_get_raw
 bagpath = Path("C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/2022-07-23-21-18-58.bag")
 
 with AnyReader([bagpath]) as reader:
