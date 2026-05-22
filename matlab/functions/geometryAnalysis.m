@@ -1,4 +1,4 @@
-function geometryAnalysis(configpath)
+function F = geometryAnalysis(configpath)
     logInfo(sprintf("Loading configuration file %s",configpath));
     tStage = tic;
     tTotal = tic;
@@ -60,7 +60,40 @@ function geometryAnalysis(configpath)
     fprintf('  Kurtosis:  %.4f\n', kurt_h);
 
     %Rayleigh criterion 
-%     n=109; %Determine dimensions of F
-%     cutoff=25;
-%     output = interestPeaks(F,X,Y,n,cutoff);
+    [nRows, nCols] = size(F);
+
+     n=nRows; %Determine dimensions of F
+     cutoff=25;
+     output = interestPeaks(F,X,Y,n,cutoff);
+
+    figure
+    surf(X, Y, F);
+    %shading interp; 
+    hold on;
+    
+    
+    scatter3(output.X_interest_all, output.Y_interest_all, output.Z_interest_all, 20, "red", "filled");
+    scatter3(output.trough_X_interest_all, output.trough_Y_interest_all, output.trough_Z_interest_all, 20, "yellow", "filled");
+    scatter3(output.peak2_X_interest_all,output.peak2_Y_interest_all, output.peak2_Z_interest_all, 10, "green", "filled");
+    
+    for j = 1:size(output.arrPeaks, 1)
+        peak = output.arrPeaks(j, :);
+        trough = output.arrTroughs(j, :);
+       % plot3([peak(1), trough(1)], [peak(2), trough(2)], [peak(3), trough(3)], 'k-', 'LineWidth', 1.5);
+    end
+    hold off;
+    xlabel('X');
+    ylabel('Y');
+    zlabel('Z');
+    %title('Interest Points Overlaid on Surf Plot');
+    view(2)
+    xlabel('X (m)');
+    ylabel('Y (m)');
+    zlabel('Z (m)');
+    axis equal
+    %title('Interest Points Overlaid on Surf Plot');
+    c = colorbar('southoutside'); % Position colorbar below the plot
+    c.Label.String = 'Z (m)';   % Set label text
+    legend({'Surface', 'Max points', 'Trough points', 'Max points2'},'Location', 'eastoutside'); % Moves it outside on the right
+    hold off;
 end
