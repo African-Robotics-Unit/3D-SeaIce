@@ -11,6 +11,7 @@ from rosbags.highlevel import AnyReader
 import json
 import pandas as pd
 import pctools
+import pcalign
 
 #o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
 with open("p3_config.json", "r") as f:
@@ -94,9 +95,18 @@ for k in range(len(arr_lidar)):
     del floor_align
 
 #Write floortforms to file
+before_icp_path = config["outputFolder"] + config["preprocessing"]["beforeICPpath"]
 scan_labels = [config["preprocessing"]["fname"] + ch for ch in "ABCDEFGH"[:len(floor_tforms)]]
-pctools.write_aln("floor_tforms.aln", floor_tforms, scan_labels)
+pcalign.write_aln(before_icp_path + "floor_tforms.aln", floor_tforms, scan_labels)
 
-show_pointcloud_intensity(cropped_rotated[0])
+
+#Perform alignment
+coarse_tforms, _ = pcalign.read_aln(config["preprocessing"]["coarseALN"])
+arr_coarse = pcalign.apply_rs_tforms(cropped_rotated, coarse_tforms)
+
+
+pcalign.save_clouds(arr_coarse, before_icp_path, config["preprocessing"]["fname"])
+#show_pointcloud_intensity(cropped_rotated[0])
+
 del cropped_clouds, cropped_rotated, floor_tforms, arr_lidar
 import gc; gc.collect()
