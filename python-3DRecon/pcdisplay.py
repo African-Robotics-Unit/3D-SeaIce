@@ -1,6 +1,7 @@
 import pyvista as pv
 import numpy as np
 from pyvistaqt import BackgroundPlotter
+import open3d as o3d
 
 def choose_rounding_base(xyz):
     ranges = np.ptp(xyz, axis=0)   # max - min for x, y, z
@@ -51,6 +52,18 @@ def show_pointcloud_intensity(
     cmap="viridis",
     window_size=(560, 420),
 ):
+    if isinstance(cloud, o3d.t.geometry.PointCloud):
+
+        xyz = cloud.point["positions"].numpy()
+
+        cloud_pv = pv.PolyData(xyz)
+
+        if "intensity" in cloud.point:
+            intensity = cloud.point["intensity"].numpy().flatten()
+            cloud_pv["intensity"] = intensity
+
+        cloud = cloud_pv
+
     try:
         plotter = pv.Plotter(window_size=window_size)
 
@@ -99,6 +112,8 @@ def show_pointcloud_intensity(
     finally:
         plotter.close()
         del plotter
+        del cloud_pv
+        del cloud
 
 def plotter_pcdisplay(
     cloud,
@@ -110,7 +125,15 @@ def plotter_pcdisplay(
     #plotter = pv.Plotter(window_size=window_size)
     plotter = BackgroundPlotter(window_size=window_size)
     plotter.set_background("white")
+    if isinstance(cloud, o3d.t.geometry.PointCloud):
+        xyz = cloud.point["positions"].numpy()
 
+        pv_cloud = pv.PolyData(xyz)
+
+        if "intensity" in cloud.point:
+            intensity = cloud.point["intensity"].numpy().flatten()
+            pv_cloud.point_data["intensity"] = intensity
+        cloud=pv_cloud
     plotter.add_mesh(
         cloud,
         scalars="intensity",
