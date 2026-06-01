@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 from scipy.signal import find_peaks
+from scipy.spatial import KDTree
 
 
 def axang_to_rotm(axis, angle):
@@ -500,3 +501,146 @@ def norms_analysis(pcd, show_graph=False):
         floor_index,
         surf_index,
     )
+
+def filter_intensity_cloud(pt_cloud, int_min, int_max):
+    """
+    Filter a point cloud by intensity range.
+
+    Parameters
+    ----------
+    pt_cloud : o3d.t.geometry.PointCloud
+        Input tensor point cloud with an 'intensity' attribute.
+    int_min : float
+        Minimum intensity value (inclusive).
+    int_max : float
+        Maximum intensity value (inclusive).
+
+    Returns
+    -------
+    o3d.t.geometry.PointCloud
+        Filtered point cloud containing only points within [int_min, int_max].
+    """
+
+    intensity = pt_cloud.point["intensity"].numpy().flatten()
+
+    mask = (intensity >= int_min) & (intensity <= int_max)
+
+    filtered = o3d.t.geometry.PointCloud()
+    filtered.point["positions"] = pt_cloud.point["positions"].numpy()[mask]
+    filtered.point["intensity"] = intensity[mask].reshape(-1, 1)
+
+    # Preserve any other attributes (e.g. colors, normals)
+    for attr in ["colors", "normals"]:
+        try:
+            filtered.point[attr] = pt_cloud.point[attr].numpy()[mask]
+        except KeyError:
+            pass
+
+    # Convert back to tensors
+    filtered.point["positions"] = o3d.core.Tensor(
+        filtered.point["positions"].numpy(), dtype=o3d.core.Dtype.Float64
+    )
+    filtered.point["intensity"] = o3d.core.Tensor(
+        filtered.point["intensity"].numpy(), dtype=o3d.core.Dtype.Float32
+    )
+
+    return filtered
+
+
+def pccat(clouds):
+    """
+    Concatenate a list of o3d.t.geometry.PointCloud objects into one,
+    equivalent to MATLAB's pccat().
+    """
+    positions = np.vstack([c.point["positions"].numpy() for c in clouds])
+
+    merged = o3d.t.geometry.PointCloud()
+    merged.point["positions"] = o3d.core.Tensor(positions, dtype=o3d.core.Dtype.Float64)
+
+    # Preserve intensity if all clouds have it
+    try:
+        intensity = np.vstack([c.point["intensity"].numpy() for c in clouds])
+        merged.point["intensity"] = o3d.core.Tensor(intensity, dtype=o3d.core.Dtype.Float32)
+    except KeyError:
+        pass
+
+    # Preserve colors if all clouds have it
+    try:
+        colors = np.vstack([c.point["colors"].numpy() for c in clouds])
+        merged.point["colors"] = o3d.core.Tensor(colors, dtype=o3d.core.Dtype.Float32)
+    except KeyError:
+        pass
+
+    return merged
+
+def voxel_down_sample_matlab_origin(cloud, voxel_size):
+    pts = cloud.point["positions"].numpy()
+    origin = pts.min(axis=0)                       # MATLAB anchors here
+    shifted = cloud.clone()
+    shifted.point["positions"] = o3d.core.Tensor(
+        pts - origin, dtype=o3d.core.Dtype.Float64)
+    down = shifted.voxel_down_sample(voxel_size)
+    down_pts = down.point["positions"].numpy() + origin   # shift back
+    down.point["positions"] = o3d.core.Tensor(
+        down_pts, dtype=o3d.core.Dtype.Float64)
+    return down
+
+def overlap_filter_optimal(clouds, grid_step=0.01, threshold=0.005):
+    """
+    Filter each cloud to retain only points that overlap with either
+    neighbouring cloud (circular: first and last are neighbours).
+
+    Parameters
+    ----------
+    clouds : list of o3d.t.geometry.PointCloud
+    grid_step : float  — voxel size for downsampling before neighbour search
+    threshold : float  — max distance to count as overlapping
+
+    Returns
+    -------
+    filtered  : list of o3d.t.geometry.PointCloud  (overlap points)
+    outliers  : list of o3d.t.geometry.PointCloud  (non-overlap points)
+    """
+    n = len(clouds)
+
+    # Downsample all clouds (grid average equivalent)
+    #arr_down = [c.voxel_down_sample(grid_step) for c in clouds]
+    arr_down = [voxel_down_sample_matlab_origin(c, grid_step) for c in clouds]
+
+    filtered, outliers = [], []
+
+    for k in range(n):
+        pc1 = arr_down[k]
+        pc2 = arr_down[(k + 1) % n]   # next neighbour (wraps to 0)
+        pc3 = arr_down[(k - 1) % n]   # prev neighbour (wraps to n-1)
+
+        pts1 = pc1.point["positions"].numpy()
+        pts2 = pc2.point["positions"].numpy()
+        pts3 = pc3.point["positions"].numpy()
+
+        # KD-tree nearest-neighbour search
+        dist2, _ = KDTree(pts2).query(pts1, k=1, workers=-1)
+        dist3, _ = KDTree(pts3).query(pts1, k=1, workers=-1)
+
+        valid_mask = (dist2 <= threshold) | (dist3 <= threshold)
+
+        def make_cloud(mask):
+            pc = o3d.t.geometry.PointCloud()
+            pc.point["positions"] = o3d.core.Tensor(
+                pts1[mask], dtype=o3d.core.Dtype.Float64)
+            try:
+                inten = pc1.point["intensity"].numpy()
+                pc.point["intensity"] = o3d.core.Tensor(
+                    inten[mask], dtype=o3d.core.Dtype.Float32)
+            except KeyError:
+                pass
+            return pc
+
+        filtered.append(make_cloud(valid_mask))
+        outliers.append(make_cloud(~valid_mask))
+
+        n_in  = int(valid_mask.sum())
+        n_out = int((~valid_mask).sum())
+        print(f"  Cloud {k}: {n_in:,} overlap  |  {n_out:,} outliers")
+
+    return filtered, outliers

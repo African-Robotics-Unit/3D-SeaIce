@@ -12,6 +12,7 @@ def read_aln(filepath):
             rows = [list(map(float, f.readline().split())) for row in range(4)]
             transforms.append(np.array(rows))
             labels.append(label)
+    transforms = np.array(transforms) 
     return transforms, labels
 
 
@@ -54,3 +55,57 @@ def save_clouds(clouds, export_path, fname):
     for k, cloud in enumerate(clouds):
         filepath = export_path / f"{fname}{letters[k]}.ply"
         o3d.t.io.write_point_cloud(str(filepath), cloud)
+
+def read_clouds(input_path):
+    """
+    Read all .ply files in input_path (sorted alphabetically).
+    Returns (paths, clouds) where clouds is a list of o3d.t.geometry.PointCloud.
+    Intensity and all other attributes are accessible via cloud.point["attribute_name"].
+    """
+    from pathlib import Path
+    import open3d as o3d
+
+    input_path = Path(input_path)
+    paths = sorted(input_path.glob("*.ply"))
+
+    if not paths:
+        raise FileNotFoundError(f"No .ply files found in {input_path}")
+
+    clouds = []
+    for filepath in paths:
+        cloud = o3d.t.io.read_point_cloud(str(filepath))
+        if cloud.is_empty():
+            raise ValueError(f"Empty point cloud loaded from {filepath}")
+        clouds.append(cloud)
+
+        n_pts = len(cloud.point["positions"])
+
+        # TensorMap does not support .keys() — check each attribute individually
+        found = []
+        for attr in ["intensity", "colors", "normals"]:
+            try:
+                cloud.point[attr]
+                found.append(attr)
+            except KeyError:
+                pass
+
+        has_intensity = "intensity" in found
+        print(f"  {filepath.name}: {n_pts:,} points | "
+              f"attributes: {found} | "
+              f"intensity: {'YES' if has_intensity else 'NOT FOUND'}")
+
+    return clouds
+
+def apply_transform(cloud, tform):
+    pts = cloud.point["positions"].numpy()       
+    R, t = tform[:3, :3], tform[:3, 3]
+    pts_transformed = (R @ pts.T).T + t
+
+    aligned = o3d.t.geometry.PointCloud()
+    aligned.point["positions"] = o3d.core.Tensor(pts_transformed, dtype=o3d.core.Dtype.Float64)
+    try:
+        aligned.point["intensity"] = cloud.point["intensity"]
+    except KeyError:
+        pass
+
+    return aligned
