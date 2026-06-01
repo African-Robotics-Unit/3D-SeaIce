@@ -2,6 +2,7 @@ import numpy as np
 import open3d as o3d
 from scipy.signal import find_peaks
 from scipy.spatial import KDTree
+import matplotlib.pyplot as plt
 
 
 def axang_to_rotm(axis, angle):
@@ -433,41 +434,41 @@ def norms_analysis(pcd, show_graph=False):
 
     valsurf = top_dom[0]
 
-    # if show_graph:
+    if show_graph:
 
-    #     plt.figure()
+        plt.figure()
 
-    #     plt.plot(z_inc, z_dom)
+        plt.plot(z_inc, z_dom)
 
-    #     plt.scatter(
-    #         z_inc_max,
-    #         dom_max,
-    #         c="red",
-    #         s=15,
-    #         label="max vals"
-    #     )
+        plt.scatter(
+            z_inc_max,
+            dom_max,
+            c="red",
+            s=15,
+            label="max vals"
+        )
 
-    #     plt.scatter(
-    #         z_inc_min,
-    #         dom_min,
-    #         c="green",
-    #         s=15,
-    #         label="min vals"
-    #     )
+        plt.scatter(
+            z_inc_min,
+            dom_min,
+            c="green",
+            s=15,
+            label="min vals"
+        )
 
-    #     plt.text(zfloor, floorval, "floor")
+        plt.text(zfloor, floorval, "p1")
 
-    #     plt.text(zboard, boardval, "pallet")
+        plt.text(zboard, boardval, "p2")
 
-    #     plt.text(zsurf, valsurf, "surface")
+        plt.text(zsurf, valsurf, "p3")
 
-    #     plt.xlabel("Z")
+        plt.xlabel("Z")
 
-    #     plt.ylabel("Sum abs(Z normals)")
+        plt.ylabel("Sum abs(Z normals)")
 
-    #     plt.legend()
+        plt.legend()
 
-    #     plt.show()
+        plt.show()
 
     poi = np.concatenate([
         z_inc_max,
@@ -644,3 +645,39 @@ def overlap_filter_optimal(clouds, grid_step=0.01, threshold=0.005):
         print(f"  Cloud {k}: {n_in:,} overlap  |  {n_out:,} outliers")
 
     return filtered, outliers
+
+def read_cloud(input_path):
+    cloud = o3d.t.io.read_point_cloud(input_path)
+
+    # TensorMap does not support .keys() — check each attribute individually
+    found = []
+    for attr in ["intensity", "colors", "normals"]:
+        try:
+            cloud.point[attr]
+            found.append(attr)
+        except KeyError:
+            pass
+    
+    return cloud
+
+def read_clouds(input_path):
+    """
+    Read all .ply files in input_path (sorted alphabetically).
+    Returns (paths, clouds) where clouds is a list of o3d.t.geometry.PointCloud.
+    Intensity and all other attributes are accessible via cloud.point["attribute_name"].
+    """
+    from pathlib import Path
+    import open3d as o3d
+
+    input_path = Path(input_path)
+    paths = sorted(input_path.glob("*.ply"))
+
+    if not paths:
+        raise FileNotFoundError(f"No .ply files found in {input_path}")
+
+    clouds = []
+    for filepath in paths:
+        cloud = read_cloud(str(filepath))
+        clouds.append(cloud)
+    return clouds
+

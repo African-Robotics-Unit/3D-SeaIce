@@ -10,7 +10,7 @@ rotationMatrix = axang2rotm([rotationAxis, rotationAngle]);
 
 % The translation vector should be the negative of 'd' along the plane's normal
 %trans = -d * planeNormal / norm(planeNormal); 
-trans=[0,0,1];
+trans=[0,0,0];
 tform = rigidtform3d(rotationMatrix,trans);
 ptCloudRotated = pctransform(ptCloud, tform);
 end
