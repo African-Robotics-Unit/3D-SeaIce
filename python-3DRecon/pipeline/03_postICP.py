@@ -1,20 +1,27 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import numpy as np
 import open3d as o3d
 import pyvista as pv
-from pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
+from tools.pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
 from rosbags.highlevel import AnyReader
 import json
 import pandas as pd
-import pctools
-import pcalign
-with open("p3_config.json", "r") as f:
+import tools.pcprocess as pcprocess
+import tools.pctransform as pctransform
+import tools.pcio as pcio
+
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'p3_config.json')
+with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
-clouds = pcalign.read_clouds("C:/Users/agori/Documents/MATLAB/MSc/bigfiles/pythonOutput/BeforeICP/")
+clouds = pcio.read_clouds("C:/Users/agori/Documents/MATLAB/MSc/bigfiles/pythonOutput/BeforeICP/")
 #PerformTform
 after_icp_path = config["outputFolder"] + config["preprocessing"]["afterICPpath"]
 icp_aln_path = after_icp_path + "ICPtforms.aln"
-ICPtforms, labels = pcalign.read_aln(icp_aln_path)
+ICPtforms, labels = pcio.read_aln(icp_aln_path)
 
 clouds_aligned = []
 for i, (cloud, H) in enumerate(zip(clouds, ICPtforms)):
@@ -45,18 +52,18 @@ o3d.visualization.draw_geometries(vis)
 int_min = config["intensityFilter"]["intensityMin"]
 int_max = config["intensityFilter"]["intensityMax"]
 
-clouds_intfilt = [pctools.filter_intensity_cloud(cloud, int_min, int_max) for cloud in clouds_aligned]
+clouds_intfilt = [pcprocess.filter_intensity_cloud(cloud, int_min, int_max) for cloud in clouds_aligned]
 
-clouds_filtered, clouds_outliers = pctools.overlap_filter_optimal(clouds_intfilt)
+clouds_filtered, clouds_outliers = pcprocess.overlap_filter_optimal(clouds_intfilt)
 
 #Align floor
 floor_aln_path = config["outputFolder"] + config["preprocessing"]["beforeICPpath"] + "floor_tforms.aln"
-floor_tforms, _ = pcalign.read_aln(floor_aln_path)
+floor_tforms, _ = pcio.read_aln(floor_aln_path)
 
 first_tform = floor_tforms[0]
-clouds_adjusted = [pcalign.apply_transform(cloud, first_tform) for cloud in clouds_filtered]
+clouds_adjusted = [pctransform.apply_transform(cloud, first_tform) for cloud in clouds_filtered]
 
-totalFilt=pctools.pccat(clouds_adjusted)
+totalFilt=pcprocess.pccat(clouds_adjusted)
 total_output_path = config["outputFolder"] + "totalCake_with_planks.ply"
 o3d.t.io.write_point_cloud(total_output_path, totalFilt)
 show_pointcloud_intensity(totalFilt)

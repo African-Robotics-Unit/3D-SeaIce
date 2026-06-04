@@ -13,6 +13,12 @@ _trial_temp/
 *.bag
 *.asv
 
+# Pipeline outputs
+python-3DRecon/output/
+
+# Prototyping / superseded scripts
+python-3DRecon/_prototyping/
+
 # Claude
 .claude/
 claude-outputs/

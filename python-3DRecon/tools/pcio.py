@@ -1,5 +1,9 @@
 import numpy as np
 import open3d as o3d
+from pathlib import Path
+
+
+# --- .aln transform file I/O (pcalign.py versions — used by pipeline) ---
 
 def read_aln(filepath):
     with open(filepath, "r") as f:
@@ -12,7 +16,7 @@ def read_aln(filepath):
             rows = [list(map(float, f.readline().split())) for row in range(4)]
             transforms.append(np.array(rows))
             labels.append(label)
-    transforms = np.array(transforms) 
+    transforms = np.array(transforms)
     return transforms, labels
 
 
@@ -27,28 +31,8 @@ def write_aln(filepath, transforms, labels):
         f.write("0\n")
 
 
-def apply_rs_tforms(clouds, tforms):
-    """Apply rigid transforms with ROS-to-local coordinate conversion."""
-    C_RL = np.array([
-    [0,  0, -1, 0],
-    [-1, 0,  0, 0],
-    [0,  1,  0, 0],
-    [0,  0,  0, 1],
-    ], dtype=float)
-
-    C_LR = C_RL.T
-    transformed = []
-    for i in range(len(clouds)):
-        total_tform = C_RL @ tforms[i] @ C_LR
-        cloud_t = clouds[i].clone()
-        cloud_t.transform(total_tform)
-        transformed.append(cloud_t)
-    return transformed
-
-
 def save_clouds(clouds, export_path, fname):
     """Write each cloud to a PLY file named {fname}{A-H}.ply."""
-    from pathlib import Path
     export_path = Path(export_path)
     export_path.mkdir(parents=True, exist_ok=True)
     letters = "ABCDEFGH"
@@ -56,15 +40,13 @@ def save_clouds(clouds, export_path, fname):
         filepath = export_path / f"{fname}{letters[k]}.ply"
         o3d.t.io.write_point_cloud(str(filepath), cloud)
 
+
 def read_clouds(input_path):
     """
     Read all .ply files in input_path (sorted alphabetically).
-    Returns (paths, clouds) where clouds is a list of o3d.t.geometry.PointCloud.
+    Returns list of o3d.t.geometry.PointCloud.
     Intensity and all other attributes are accessible via cloud.point["attribute_name"].
     """
-    from pathlib import Path
-    import open3d as o3d
-
     input_path = Path(input_path)
     paths = sorted(input_path.glob("*.ply"))
 
@@ -96,16 +78,35 @@ def read_clouds(input_path):
 
     return clouds
 
-def apply_transform(cloud, tform):
-    pts = cloud.point["positions"].numpy()       
-    R, t = tform[:3, :3], tform[:3, 3]
-    pts_transformed = (R @ pts.T).T + t
 
-    aligned = o3d.t.geometry.PointCloud()
-    aligned.point["positions"] = o3d.core.Tensor(pts_transformed, dtype=o3d.core.Dtype.Float64)
-    try:
-        aligned.point["intensity"] = cloud.point["intensity"]
-    except KeyError:
-        pass
+# --- Single cloud I/O and format conversion (pctools.py) ---
 
-    return aligned
+def read_cloud(input_path):
+    cloud = o3d.t.io.read_point_cloud(input_path)
+
+    # TensorMap does not support .keys() — check each attribute individually
+    found = []
+    for attr in ["intensity", "colors", "normals"]:
+        try:
+            cloud.point[attr]
+            found.append(attr)
+        except KeyError:
+            pass
+
+    return cloud
+
+
+def dict_to_o3d_t(cloud):
+    pcd = o3d.t.geometry.PointCloud()
+
+    pcd.point["positions"] = o3d.core.Tensor(
+        cloud["xyz"],
+        dtype=o3d.core.Dtype.Float32
+    )
+
+    pcd.point["intensity"] = o3d.core.Tensor(
+        cloud["intensity"].reshape(-1, 1),
+        dtype=o3d.core.Dtype.Float32
+    )
+
+    return pcd

@@ -3,6 +3,7 @@ import numpy as np
 from rosbags.highlevel import AnyReader
 import pandas as pd
 
+
 def get_min_sz(all_clouds, fnames):
     """
     Provides a summary of the number of pointclouds in each bagfile
@@ -75,6 +76,8 @@ def get_min_sz(all_clouds, fnames):
     }
 
     return minsz, testout
+
+
 def read_livox_pointcloud2(msg):
 
     dtype = np.dtype({

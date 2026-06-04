@@ -3,6 +3,7 @@ import numpy as np
 from pyvistaqt import BackgroundPlotter
 import open3d as o3d
 
+
 def choose_rounding_base(xyz):
     ranges = np.ptp(xyz, axis=0)   # max - min for x, y, z
     max_range = np.max(ranges)
@@ -15,7 +16,8 @@ def choose_rounding_base(xyz):
         return 5
     else:
         return 10
-    
+
+
 def rounded_bounds(xyz, base=10):
     """
     Generate PyVista bounds rounded outward to nearest base.
@@ -44,6 +46,7 @@ def rounded_bounds(xyz, base=10):
     zmax = np.ceil(np.max(xyz[:, 2]) / base) * base
 
     return [xmin, xmax, ymin, ymax, zmin, zmax]
+
 
 def show_pointcloud_intensity(
     cloud,
@@ -115,6 +118,7 @@ def show_pointcloud_intensity(
         del cloud_pv
         del cloud
 
+
 def plotter_pcdisplay(
     cloud,
     screenshot_path=None,
@@ -172,5 +176,3 @@ def plotter_pcdisplay(
     plotter.camera.zoom(1.2)
     #plotter.show(auto_close=False, interactive_update=True)
     return plotter
-
-    

@@ -1,19 +1,27 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import numpy as np
 import open3d as o3d
 import pyvista as pv
-from pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
+from tools.pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
 from rosbags.highlevel import AnyReader
 import json
 import pandas as pd
-import pctools
-import pcalign
-import pcanalysis
+import tools.pcprocess as pcprocess
+import tools.pctransform as pctransform
+import tools.pcio as pcio
+import tools.pcsurface as pcsurface
+import tools.pcmesh as pcmesh
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from scipy import stats as sp_stats
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import pymeshfix
 import traceback
+
+
 def _mesh_face_colors(verts, tris, base_color=(0.8, 0.8, 1.0), light_dir=(0.5, 0.5, 1.0)):
     """Per-face diffuse lighting — approximates MATLAB's Gouraud + headlight."""
     v0, v1, v2 = verts[tris[:,0]], verts[tris[:,1]], verts[tris[:,2]]
@@ -27,20 +35,21 @@ def _mesh_face_colors(verts, tris, base_color=(0.8, 0.8, 1.0), light_dir=(0.5, 0
 
     return lighting[:, None] * np.array(base_color)
 
-with open("p3_config.json", "r") as f:
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'p3_config.json')
+with open(CONFIG_PATH, "r") as f:
     config = json.load(f)
 
 #Load cloud with planks
 cloud_path = config["outputFolder"] + "totalCake_with_planks.ply"
-filtered_cloud = pctools.read_cloud(cloud_path)
+filtered_cloud = pcio.read_cloud(cloud_path)
 #show_pointcloud_intensity(filtered_cloud)
 #Downsample TO DO
 voxel_size = config["geometry"]["downsampleGrid"]
 
 downsampled_cloud = filtered_cloud.voxel_down_sample(voxel_size=voxel_size)
-#Perform plank cropping + additional croppping 
+#Perform plank cropping + additional croppping
 # Analyse normal distribution
-sorted_poi, arr_index, p1Index, p2Index, p3Index = pctools.norms_analysis(
+sorted_poi, arr_index, p1Index, p2Index, p3Index = pctransform.norms_analysis(
         downsampled_cloud,
         show_graph=False
     )
@@ -49,7 +58,7 @@ x_roi=[-np.inf, 4.25] #Custom crop
 y_roi=[-np.inf, np.inf]
 z_roi=[z_cutoff, np.inf]
 roi = [x_roi, y_roi, z_roi]
-total_cake = pctools.crop_o3d_t(
+total_cake = pcprocess.crop_o3d_t(
         downsampled_cloud, roi
     )
 
@@ -58,7 +67,7 @@ total_output_path = config["outputFolder"] + "totalCake.ply"
 o3d.t.io.write_point_cloud(total_output_path, total_cake)
 
 #isolateSurface function
-pc_top_filled = pcanalysis.isolate_surface(total_cake) 
+pc_top_filled = pcsurface.isolate_surface(total_cake)
 
 #InterpolateCloud function
 #show_pointcloud_intensity(pc_top_filled)
@@ -67,7 +76,7 @@ pc_top_filled = pcanalysis.isolate_surface(total_cake)
 interpolateScale = config["geometry"]["interpolateGrid"]
 showInterpolate = False
 
-F, X, Y = pcanalysis.interpolate_cloud(pc_top_filled, scale=interpolateScale)
+F, X, Y = pcsurface.interpolate_cloud(pc_top_filled, scale=interpolateScale)
 if showInterpolate:
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -106,7 +115,7 @@ print(f"  Skewness:  {skew_h:.4f}")
 print(f"  Kurtosis:  {kurt_h:.4f}")
 #InterestPeaks
 n_rows, _ = F.shape
-output = pcanalysis.interest_peaks(F, X, Y, n=n_rows, cutoff=25)
+output = pcsurface.interest_peaks(F, X, Y, n=n_rows, cutoff=25)
 
 # fig = plt.figure()
 # ax  = fig.add_subplot(111, projection='3d')
@@ -153,21 +162,21 @@ if interestPeaks:
     plt.show()
 
 #print("meshing")
-#surface_mesh = pcanalysis.pc_to_surface_mesh(total_cake, depth=5, density_quantile=0.05)
-#surface_mesh = pcanalysis.pc_to_surface_mesh_flat_bottom(total_cake, depth=5, density_quantile=-1, bottom_spacing=0.05)
-cloud_with_bottom = pcanalysis.add_bottom(total_cake, depth=5, density_quantile=-1, bottom_spacing=0.05)
-surface_mesh = pcanalysis.pc_to_surface_mesh(cloud_with_bottom, depth=5, density_quantile=0.05)
+#surface_mesh = pcmesh.pc_to_surface_mesh(total_cake, depth=5, density_quantile=0.05)
+#surface_mesh = pcmesh.pc_to_surface_mesh_flat_bottom(total_cake, depth=5, density_quantile=-1, bottom_spacing=0.05)
+cloud_with_bottom = pcmesh.add_bottom(total_cake, depth=5, density_quantile=-1, bottom_spacing=0.05)
+surface_mesh = pcmesh.pc_to_surface_mesh(cloud_with_bottom, depth=5, density_quantile=0.05)
 #o3d.visualization.draw_geometries([surface_mesh])
 #o3d.io.write_triangle_mesh(config["outputFolder"] + "surfaceMesh.stl", surface_mesh)
 #print("mesh done, now fixing the mesh")
 
-#mfix = pcanalysis.fix_mesh(surface_mesh)
-#mfix_flat= pcanalysis.flatten_mesh_bottom(mfix,tolerance_pct=0.05)   # ← post-process
+#mfix = pcmesh.fix_mesh(surface_mesh)
+#mfix_flat= pcmesh.flatten_mesh_bottom(mfix,tolerance_pct=0.05)   # ← post-process
 #mfix_flat.mesh.plot(cpos='xy', eye_dome_lighting=True, anti_aliasing=True, smooth_shading=True)
-#flat_mesh    = pcanalysis.add_flat_bottom(surface_mesh)
+#flat_mesh    = pcmesh.add_flat_bottom(surface_mesh)
 
 # try:
-#     flat_mesh = pcanalysis.add_flat_bottom(surface_mesh)
+#     flat_mesh = pcmesh.add_flat_bottom(surface_mesh)
 # except Exception as e:
 #     traceback.print_exc()
 
@@ -183,7 +192,7 @@ if multi_mesh:
     # Build meshes
     #depths = [4, 5, 6]
     depths = [4]
-    #meshes = [pcanalysis.pc_to_surface_mesh(total_cake, depth=d, density_quantile=0.05)
+    #meshes = [pcmesh.pc_to_surface_mesh(total_cake, depth=d, density_quantile=0.05)
             #for d in depths]
     meshes=[surface_mesh]
     # Figure — 17x9 cm matching MATLAB Position

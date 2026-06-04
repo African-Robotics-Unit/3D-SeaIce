@@ -23,13 +23,17 @@ Auto-parameter formulas (from runICPInit.m):
   MaxRoughness  = 0.2 × PlaneSearchRadius
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import argparse
 import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-import pcalign
+import tools.pcio as pcio
 import numpy as np
 import open3d as o3d
 from scipy.spatial import KDTree
@@ -509,18 +513,19 @@ def main():
     H_list = run_icp(pts_list, p)
 
     # Save transform matrices
-    
+
     # with open(args.save_transforms, "w") as f:
     #     json.dump({str(paths[i].name): H_list[i].tolist()
     #                for i in range(len(paths))}, f, indent=2)
     # print(f"Transforms → {args.save_transforms}")
 
-    with open("p3_config.json", "r") as f:
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'p3_config.json')
+    with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
     scan_labels = [p.name for p in paths]
     after_icp_path = config["outputFolder"] + config["preprocessing"]["afterICPpath"]
     aln_path = after_icp_path + "ICPtforms.aln"
-    pcalign.write_aln(aln_path, H_list, scan_labels)
+    pcio.write_aln(aln_path, H_list, scan_labels)
 
     # Apply H_total to original clouds and save
     pts_aligned = []

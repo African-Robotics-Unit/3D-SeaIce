@@ -1,6 +1,7 @@
 {
     "outputFolder": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/pythonOutput/",
     "preprocessing": {
+        "source_type": "ros",
         "pathname": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/p3/",
         "roi": {
             "x": [

@@ -1,11 +1,15 @@
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import json
 import ast
 from pathlib import Path
-from pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
+from tools.pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
 import numpy as np
 import pyvista as pv
 import re
-from roiutils import decode_bound, encode_roi
+from tools.roiutils import decode_bound, encode_roi
 
 def parse_roiNEW(user_input):
     # Convert unquoted inf values to quoted strings before ast.literal_eval
@@ -85,8 +89,8 @@ def write_roi_to_json(config_path, x_roi, y_roi, z_roi):
 def main():
     #ply_path = input("Enter path to .ply file: ").strip()
     #config_path = input("Enter path to JSON config file: ").strip()
-    config_path = "p3_config.json"
-    ply_path = "testout.vtp"
+    config_path = Path(__file__).parent.parent / "config" / "p3_config.json"
+    ply_path = str(Path(__file__).parent.parent / "output" / "testout.vtp")
     cloud = pv.read(ply_path)
     print(cloud)
     print("\nShowing original cloud.")
