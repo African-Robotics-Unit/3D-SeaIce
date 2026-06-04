@@ -12,3 +12,8 @@ _trial_temp/
 #bagfiles
 *.bag
 *.asv
+
+# Claude
+.claude/
+claude-outputs/
+claude-resources/

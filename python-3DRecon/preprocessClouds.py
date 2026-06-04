@@ -12,6 +12,7 @@ import json
 import pandas as pd
 import pctools
 import pcalign
+from roiutils import decode_roi
 
 #o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
 with open("p3_config.json", "r") as f:
@@ -29,11 +30,7 @@ del cloud
 #plotter1 = plotter_pcdisplay(cloud)
 
 #Read ROI
-roi = [
-    [0, 7],
-    [-5, 5],
-    [-np.inf, 2],
-]
+roi = decode_roi(config["preprocessing"]["roi"])
 
 arr_lidar = pctools.crop_merge_downsample(
     roi=roi,

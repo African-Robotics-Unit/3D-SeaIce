@@ -5,23 +5,7 @@ from pcdisplay import show_pointcloud_intensity, plotter_pcdisplay
 import numpy as np
 import pyvista as pv
 import re
-
-def decode_bound(value):
-    if isinstance(value, str):
-        value = value.strip().lower()
-        if value == "-inf":
-            return -np.inf
-        if value == "inf":
-            return np.inf
-    return float(value)
-
-
-def encode_bound(value):
-    if np.isneginf(value):
-        return "-inf"
-    if np.isposinf(value):
-        return "inf"
-    return str(value)
+from roiutils import decode_bound, encode_roi
 
 def parse_roiNEW(user_input):
     # Convert unquoted inf values to quoted strings before ast.literal_eval
@@ -90,11 +74,7 @@ def write_roi_to_json(config_path, x_roi, y_roi, z_roi):
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    config["preprocessing"]["roi"] = {
-        "x": [encode_bound(x_roi[0]), encode_bound(x_roi[1])],
-        "y": [encode_bound(y_roi[0]), encode_bound(y_roi[1])],
-        "z": [encode_bound(z_roi[0]), encode_bound(z_roi[1])],
-    }
+    config["preprocessing"]["roi"] = encode_roi(x_roi, y_roi, z_roi)
 
     with open(config_path, "w") as f:
         json.dump(config, f, indent=4)

@@ -1,54 +1,53 @@
-function [pcDenoised] = outlierRemoval(pcLiDAR,K,showGraph)
-%K=20;
-%pcLiDAR=pcCropped;
-%nums = 1:pcLiDAR.Count;
-pcCropped=pcLiDAR;
- if nargin < 3
-        showGraph = false; % Default value
- end
-tot = pcLiDAR.Count;
-pOutliers = zeros(tot,1);
-outliers = zeros(tot,1);
-outlierCount = 0;
-for i=1:tot
-    pt = pcLiDAR.Location(i,:);
-    [indices,dists] = findNearestNeighbors(pcLiDAR,pt,K+1);
-    dists = dists(2:end);
-    sumDist = sum(dists);
-    avgDist = sumDist/K;
-    maxDist = max(dists);
-    term = -1*dists/avgDist;
-    %expDists = exp(-1*dists/avgDist);
-    expDists = exp(term);
-    sumExpDist = sum(expDists);
-    localDensity = sumExpDist/K;
-    pOutlier = 1-localDensity;
-    pOutliers(i)=avgDist;
+function pcDenoised = outlierRemoval(pcLiDAR, K, showGraph)
+% OUTLIERREMOVAL  Remove outliers based on average K-NN distance.
+%   Points whose average distance to K nearest neighbours >= 0.05 are removed.
+%
+%   Inputs:
+%     pcLiDAR   - input point cloud
+%     K         - number of nearest neighbours
+%     showGraph - (optional) display inlier/outlier scatter plots
+
+if nargin < 3
+    showGraph = false;
 end
-idx = pOutliers<0.05;
-idxOutliers = pOutliers >=0.05;
 
-points = pcCropped.Location;
-denoisedPoints = points(idx,:);
-outlierPts = points(idxOutliers,:);
+tot      = pcLiDAR.Count;
+avgDists = zeros(tot, 1);
 
+for i = 1:tot
+    pt            = pcLiDAR.Location(i, :);
+    [~, dists]    = findNearestNeighbors(pcLiDAR, pt, K + 1);
+    dists         = dists(2:end);           % remove self (distance = 0)
+    avgDists(i)   = mean(dists);
+end
 
+inlierMask  = avgDists <  0.05;
+outlierMask = avgDists >= 0.05;
 
+points        = pcLiDAR.Location;
+denoisedPts   = points(inlierMask,  :);
+outlierPts    = points(outlierMask, :);
 
-nums = 1:tot;
-sortedArr = sort(pOutliers);
 if showGraph
-    scatter(nums,sortedArr,15,'filled');
-    xIn = denoisedPoints(:,1);
-    yIn = denoisedPoints(:,2);
-    xOut= outlierPts(:,1);
-    yOut= outlierPts(:,2);
-    sz=15;
-    scatter(xIn,yIn,sz,'blue','filled');
+    figure;
+
+    subplot(1, 2, 1);
+    scatter(1:tot, sort(avgDists), 15, 'filled');
+    yline(0.05, 'r--', 'Threshold = 0.05');
+    xlabel('Point index (sorted)');
+    ylabel('Avg KNN distance');
+    title('Sorted average KNN distances');
+
+    subplot(1, 2, 2);
+    scatter(denoisedPts(:,1), denoisedPts(:,2), 15, 'blue', 'filled');
     hold on;
-    scatter(xOut,yOut,sz,'red','filled');
+    scatter(outlierPts(:,1),  outlierPts(:,2),  15, 'red',  'filled');
     hold off;
- end
-pcDenoised = pointCloud(denoisedPoints);
-%pcDenoised = pointCloud(denoisedPoints, 'Intensity', denoisedIntensity);
+    xlabel('X'); ylabel('Y');
+    axis equal;
+    legend('Inliers', 'Outliers');
+    title('Inliers vs Outliers (XY)');
+end
+
+pcDenoised = pointCloud(denoisedPts);
 end
