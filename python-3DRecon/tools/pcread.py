@@ -79,6 +79,23 @@ def get_min_sz(all_clouds, fnames):
 
 
 def read_livox_pointcloud2(msg):
+    """
+    Parse a Livox LiDAR sensor_msgs/PointCloud2 message.
+
+    Applies the same invalid-point filter as ros2GetRawslim.m: drops
+    points where XYZ is all-zero and intensity is zero.
+
+    Parameters
+    ----------
+    msg : sensor_msgs/PointCloud2
+        Deserialized ROS2 message from the /livox/lidar topic.
+
+    Returns
+    -------
+    dict with keys:
+        xyz       : ndarray, shape (N, 3), float32
+        intensity : ndarray, shape (N,), float32
+    """
 
     dtype = np.dtype({
         "names": ["x", "y", "z", "intensity", "tag", "line"],
@@ -118,7 +135,169 @@ def read_livox_pointcloud2(msg):
     }
 
 
+def read_realsense_pointcloud2(msg):
+    """
+    Parse a RealSense sensor_msgs/PointCloud2 message with packed RGB.
+
+    Expects the standard RealSense D-series layout: x, y, z as float32
+    at offsets 0/4/8, and a packed RGB float32 at offset 12 (16-byte
+    point step). Filters out NaN points and points at z <= 0.
+
+    Parameters
+    ----------
+    msg : sensor_msgs/PointCloud2
+        Deserialized ROS2 message from the /camera/depth/color/points topic.
+
+    Returns
+    -------
+    dict with keys:
+        xyz : ndarray, shape (N, 3), float32  -- RealSense camera frame
+        rgb : ndarray, shape (N, 3), uint8
+    """
+
+    dtype = np.dtype({
+        "names": ["x", "y", "z", "rgb"],
+        "formats": [np.float32, np.float32, np.float32, np.float32],
+        "offsets": [0, 4, 8, 12],
+        "itemsize": 16,
+    })
+
+    points = np.frombuffer(msg.data, dtype=dtype)
+
+    xyz = np.column_stack((points["x"], points["y"], points["z"]))
+
+    packed = points["rgb"].view(np.uint32)
+    r = ((packed >> 16) & 0xFF).astype(np.uint8)
+    g = ((packed >> 8) & 0xFF).astype(np.uint8)
+    b = (packed & 0xFF).astype(np.uint8)
+    rgb = np.column_stack([r, g, b])
+
+    valid = np.isfinite(xyz).all(axis=1) & (xyz[:, 2] > 0)
+    return {"xyz": xyz[valid], "rgb": rgb[valid]}
+
+
+def realsense_to_lidar_frame(pc):
+    """
+    Rotate a RealSense point cloud into the LiDAR coordinate frame.
+
+    Mirrors realsense_to_LiDAR_ros2.m: X_L = Z_RS, Y_L = -X_RS, Z_L = -Y_RS.
+
+    Parameters
+    ----------
+    pc : dict
+        Point cloud dict with keys xyz (N, 3) and rgb (N, 3).
+
+    Returns
+    -------
+    dict with keys:
+        xyz : ndarray, shape (N, 3), float32  -- LiDAR frame
+        rgb : ndarray, shape (N, 3), uint8
+    """
+    # Mirrors realsense_to_LiDAR_ros2.m: RS Z->X, -RS X->Y, -RS Y->Z
+    xyz = pc["xyz"]
+    xyz_lidar = np.column_stack([xyz[:, 2], -xyz[:, 0], -xyz[:, 1]])
+    return {"xyz": xyz_lidar, "rgb": pc["rgb"]}
+
+
+def ros2_get_raw(
+    pathname,
+    lidar_topic="/livox/lidar",
+    rs_topic="/camera/depth/color/points",
+    rs_frame_idx=3,
+):
+    """
+    Read all ROS2 bag directories under pathname and extract LiDAR and
+    RealSense point clouds. Equivalent to ros2GetRawslim.m.
+
+    Scans for subdirectories whose names start with 'rosbag2', reads
+    all frames from lidar_topic, and one RealSense frame (rs_frame_idx)
+    from rs_topic per bag. The RealSense cloud is transformed into the
+    LiDAR coordinate frame via realsense_to_lidar_frame().
+
+    Parameters
+    ----------
+    pathname : str or Path
+        Directory containing rosbag2* subdirectories.
+
+    lidar_topic : str
+        PointCloud2 topic for the Livox LiDAR.
+
+    rs_topic : str
+        PointCloud2 topic for the RealSense depth/color stream.
+
+    rs_frame_idx : int
+        Index of the RealSense frame to extract per bag (default 3,
+        matching MATLAB's {4,1} 1-based indexing).
+
+    Returns
+    -------
+    all_clouds_lidar : list of list of dict
+        Outer list is per bag; inner list is per frame.
+        Each dict has keys xyz (N, 3) and intensity (N,).
+
+    arr_rs_raw : list of dict
+        One entry per bag. Each dict has keys xyz (N, 3) and rgb (N, 3),
+        in LiDAR coordinates.
+
+    fnames : list of str
+        Bag directory names in sorted order.
+    """
+
+    pathname = Path(pathname)
+
+    bag_dirs = sorted(
+        d for d in pathname.iterdir()
+        if d.is_dir() and d.name.startswith("rosbag2")
+    )
+
+    all_clouds_lidar = []
+    arr_rs_raw = []
+    fnames = []
+
+    for bagdir in bag_dirs:
+        fnames.append(bagdir.name)
+        lidar_clouds = []
+        rs_frames = []
+
+        with AnyReader([bagdir]) as reader:
+            for connection, timestamp, rawdata in reader.messages():
+                if connection.topic == lidar_topic:
+                    msg = reader.deserialize(rawdata, connection.msgtype)
+                    lidar_clouds.append(read_livox_pointcloud2(msg))
+                elif connection.topic == rs_topic:
+                    msg = reader.deserialize(rawdata, connection.msgtype)
+                    rs_frames.append(read_realsense_pointcloud2(msg))
+
+        all_clouds_lidar.append(lidar_clouds)
+        arr_rs_raw.append(realsense_to_lidar_frame(rs_frames[rs_frame_idx]))
+
+    return all_clouds_lidar, arr_rs_raw, fnames
+
+
 def ros_get_raw(pathname, topic="/livox/lidar"):
+    """
+    Read all ROS1 bag files under pathname and extract LiDAR point clouds.
+
+    Scans for *.bag files and reads every frame from the given topic.
+    Use ros2_get_raw() for ROS2 bag directories.
+
+    Parameters
+    ----------
+    pathname : str or Path
+        Directory containing *.bag files.
+
+    topic : str
+        PointCloud2 topic for the Livox LiDAR.
+
+    Returns
+    -------
+    all_clouds : list of list of dict
+        Outer list is per bag; inner list is per frame.
+        Each dict has keys xyz (N, 3) and intensity (N,).
+
+    fnames : list of str
+        Bag filenames in sorted order.
+    """
 
     pathname = Path(pathname)
 

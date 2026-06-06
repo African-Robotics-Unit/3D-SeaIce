@@ -74,7 +74,7 @@ pc_top_filled = pcsurface.isolate_surface(total_cake)
 
 #Stats and display
 interpolateScale = config["geometry"]["interpolateGrid"]
-showInterpolate = False
+showInterpolate = True
 
 F, X, Y = pcsurface.interpolate_cloud(pc_top_filled, scale=interpolateScale)
 if showInterpolate:
@@ -140,7 +140,7 @@ output = pcsurface.interest_peaks(F, X, Y, n=n_rows, cutoff=25)
 # ax.legend(loc='upper right')
 # plt.tight_layout()
 # plt.show()
-interestPeaks = False
+interestPeaks = True
 if interestPeaks:
     fig, ax = plt.subplots()
 
