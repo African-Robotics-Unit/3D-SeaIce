@@ -1,0 +1,79 @@
+{
+    "outputFolder": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/output2blocks/",
+    "preprocessing": {
+        "source_type": "ros2",
+        "pathname": "C:/Users/agori/Documents/MATLAB/MSc/bigfiles/testROS2/",
+        "roi": {
+            "x": [
+                "1.2",
+                "3"
+            ],
+            "y": [
+                "-3",
+                "3"
+            ],
+            "z": [
+                "-inf",
+                "1"
+            ]
+        },
+        "nclouds": 80,
+        "gridStep": 0.01,
+        "seed": 1,
+        "startCloud": 10,
+        "scanOrder": "FEDCBAHG",
+        "save_arrLiDAR": true,
+        "save_arrLiDARfolder": "arrLiDAR/",
+        "save_arrLiDARname": "P3",
+        "coarseALN": "C:/Users/agori/Documents/MATLAB/MSc/CRUISE-DATA/A-H2aligned.aln",
+        "beforeICPpath": "BeforeICP/",
+        "afterICPpath": "AfterICP/",
+        "fname": "P3",
+        "postFloorROI": {
+            "x": [
+                "1.25",
+                "5"
+            ],
+            "y": [
+                "-3",
+                "3"
+            ],
+            "z": [
+                "-inf",
+                "1"
+            ]
+        }
+    },
+    "ICPOptions": {
+        "NoOfTransfParam": 6,
+        "UniformSamplingDistance": 0.2,
+        "PlaneSearchRadius": 0.1,
+        "MaxRoughness": 0.02,
+        "LogLevel": "debug",
+        "Plot": true
+    },
+    "intensityFilter": {
+        "intensityMin": 0,
+        "intensityMax": 140
+    },
+    "overlapFilter": true,
+    "geometry": {
+        "downsampleGrid": 0.01,
+        "zcrop": -0.2471,
+        "interpolateGrid": 0.02
+    },
+    "roi": {
+        "x": [
+            "1.0",
+            "5.0"
+        ],
+        "y": [
+            "-2.0",
+            "3.0"
+        ],
+        "z": [
+            "-10.0",
+            "1.0"
+        ]
+    }
+}

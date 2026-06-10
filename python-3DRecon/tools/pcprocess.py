@@ -103,9 +103,7 @@ def crop_merge_downsample(
         end_cloud = start_cloud + nclouds
 
         for i in range(start_cloud, end_cloud):
-            cloud_dict = cur_view[i]
-
-            pcd = dict_to_o3d_t(cloud_dict)
+            pcd = cur_view[i]
 
             cropped = crop_o3d_t(pcd, roi)
 

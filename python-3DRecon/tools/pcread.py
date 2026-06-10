@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import open3d as o3d
 from rosbags.highlevel import AnyReader
 import pandas as pd
 
@@ -48,9 +49,9 @@ def get_min_sz(all_clouds, fnames):
         # First frame from each bag
         first_cloud = cur[0]
 
-        xyz_list.append(first_cloud["xyz"])
+        xyz_list.append(first_cloud.point["positions"].numpy())
 
-        intensity_list.append(first_cloud["intensity"])
+        intensity_list.append(first_cloud.point["intensity"].numpy().flatten())
 
     # Print table summary
     summary = pd.DataFrame({
@@ -70,10 +71,9 @@ def get_min_sz(all_clouds, fnames):
 
     intensity_combined = np.concatenate(intensity_list)
 
-    testout = {
-        "xyz": xyz_combined,
-        "intensity": intensity_combined
-    }
+    testout = o3d.t.geometry.PointCloud()
+    testout.point["positions"] = o3d.core.Tensor(xyz_combined, dtype=o3d.core.Dtype.Float32)
+    testout.point["intensity"] = o3d.core.Tensor(intensity_combined[:, None], dtype=o3d.core.Dtype.Float32)
 
     return minsz, testout
 
@@ -129,10 +129,10 @@ def read_livox_pointcloud2(msg):
     xyz = xyz[valid_points]
     intensity = intensity[valid_points]
 
-    return {
-        "xyz": xyz,
-        "intensity": intensity,
-    }
+    pcd = o3d.t.geometry.PointCloud()
+    pcd.point["positions"] = o3d.core.Tensor(xyz, dtype=o3d.core.Dtype.Float32)
+    pcd.point["intensity"] = o3d.core.Tensor(intensity[:, None], dtype=o3d.core.Dtype.Float32)
+    return pcd
 
 
 def read_realsense_pointcloud2(msg):
@@ -159,7 +159,7 @@ def read_realsense_pointcloud2(msg):
         "names": ["x", "y", "z", "rgb"],
         "formats": [np.float32, np.float32, np.float32, np.float32],
         "offsets": [0, 4, 8, 12],
-        "itemsize": 16,
+        "itemsize": msg.point_step,
     })
 
     points = np.frombuffer(msg.data, dtype=dtype)
@@ -173,7 +173,10 @@ def read_realsense_pointcloud2(msg):
     rgb = np.column_stack([r, g, b])
 
     valid = np.isfinite(xyz).all(axis=1) & (xyz[:, 2] > 0)
-    return {"xyz": xyz[valid], "rgb": rgb[valid]}
+    pcd = o3d.t.geometry.PointCloud()
+    pcd.point["positions"] = o3d.core.Tensor(xyz[valid], dtype=o3d.core.Dtype.Float32)
+    pcd.point["colors"] = o3d.core.Tensor(rgb[valid].astype(np.float32) / 255.0, dtype=o3d.core.Dtype.Float32)
+    return pcd
 
 
 def realsense_to_lidar_frame(pc):
@@ -194,9 +197,12 @@ def realsense_to_lidar_frame(pc):
         rgb : ndarray, shape (N, 3), uint8
     """
     # Mirrors realsense_to_LiDAR_ros2.m: RS Z->X, -RS X->Y, -RS Y->Z
-    xyz = pc["xyz"]
+    xyz = pc.point["positions"].numpy()
     xyz_lidar = np.column_stack([xyz[:, 2], -xyz[:, 0], -xyz[:, 1]])
-    return {"xyz": xyz_lidar, "rgb": pc["rgb"]}
+    out = o3d.t.geometry.PointCloud()
+    out.point["positions"] = o3d.core.Tensor(xyz_lidar, dtype=o3d.core.Dtype.Float32)
+    out.point["colors"] = pc.point["colors"]
+    return out
 
 
 def ros2_get_raw(
@@ -204,6 +210,7 @@ def ros2_get_raw(
     lidar_topic="/livox/lidar",
     rs_topic="/camera/depth/color/points",
     rs_frame_idx=3,
+    read_rs=True,
 ):
     """
     Read all ROS2 bag directories under pathname and extract LiDAR and
@@ -254,7 +261,8 @@ def ros2_get_raw(
     arr_rs_raw = []
     fnames = []
 
-    for bagdir in bag_dirs:
+    for i, bagdir in enumerate(bag_dirs):
+        print(f"[{i+1}/{len(bag_dirs)}] Reading bag: {bagdir.name}")
         fnames.append(bagdir.name)
         lidar_clouds = []
         rs_frames = []
@@ -264,12 +272,17 @@ def ros2_get_raw(
                 if connection.topic == lidar_topic:
                     msg = reader.deserialize(rawdata, connection.msgtype)
                     lidar_clouds.append(read_livox_pointcloud2(msg))
-                elif connection.topic == rs_topic:
+                    print(f"  LiDAR frame {len(lidar_clouds)}", end="\r")
+                elif read_rs and connection.topic == rs_topic:
                     msg = reader.deserialize(rawdata, connection.msgtype)
                     rs_frames.append(read_realsense_pointcloud2(msg))
+                    print(f"  RS frame {len(rs_frames)}", end="\r")
 
+        print(f"  Done: {len(lidar_clouds)} LiDAR frames, {len(rs_frames)} RS frames")
         all_clouds_lidar.append(lidar_clouds)
-        arr_rs_raw.append(realsense_to_lidar_frame(rs_frames[rs_frame_idx]))
+        if read_rs:
+            #arr_rs_raw.append(realsense_to_lidar_frame(rs_frames[rs_frame_idx]))
+            arr_rs_raw.append(rs_frames[rs_frame_idx])
 
     return all_clouds_lidar, arr_rs_raw, fnames
 

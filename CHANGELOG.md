@@ -3,10 +3,18 @@ All notable changes documented here. Linked to git commits by hash.
 
 ---
 
-## [Unreleased]
+## [Unreleased] -- 2026-06-10
+
 ### Added
+- `show_pointcloud_color()` in `pcdisplay.py` for RGB RealSense point cloud visualisation via PyVista
+- `python-3DRecon/realsense/` folder: `extractRS.py` (pyrealsense2 accelerometer reader) and `metadata_gen.py` (ROS1 bag metadata CSV generator)
+- `python-3DRecon/config/2blocks_config.json` for ROS2 two-block test dataset
+- `Agi-Map/` folder: four Basemap figure scripts for SCALE22 SIC/cruise-track/station visualisation (`Agi_SCALE22`, `Agi_SCALE22_field`, `_new`, `_new_field`) plus associated data files
+
 ### Changed
-### Fixed
+- `01_preprocessClouds.py`: wrapped in `main(config_name)` with argparse; ROS1 and ROS2 now dispatched via `source_type` config key; ROS2 path adds `joblib` caching
+- `pcread.py`: all point cloud readers now return `o3d.t.geometry.PointCloud` instead of raw dicts; `ros2_get_raw` adds `read_rs` flag and per-bag progress printing; RealSense `itemsize` fixed to `msg.point_step`
+- `pcprocess.py`: removed redundant `dict_to_o3d_t` call in `crop_merge_downsample` (clouds are now native tensor objects at read time)
 
 ---
 

@@ -115,7 +115,76 @@ def show_pointcloud_intensity(
     finally:
         plotter.close()
         del plotter
-        del cloud_pv
+        del cloud
+
+
+def show_pointcloud_color(
+    cloud,
+    screenshot_path=None,
+    point_size=3,
+    window_size=(560, 420),
+):
+    """
+    Display a point cloud with RGB colour (e.g. from a RealSense camera).
+
+    Parameters
+    ----------
+    cloud : o3d.t.geometry.PointCloud or pv.PolyData
+        Input cloud. If an o3d tensor cloud, must have 'positions' and
+        optionally 'colors' (float32 [0, 1]) attributes.
+
+    screenshot_path : str or None
+        If provided, saves a screenshot to this path instead of
+        opening an interactive window.
+
+    point_size : int
+        Rendered point size in pixels.
+
+    window_size : tuple of int
+        PyVista plotter window size (width, height) in pixels.
+    """
+    if isinstance(cloud, o3d.t.geometry.PointCloud):
+        xyz = cloud.point["positions"].numpy()
+        cloud_pv = pv.PolyData(xyz)
+        if "colors" in cloud.point:
+            colors = (cloud.point["colors"].numpy() * 255).astype(np.uint8)
+            cloud_pv["colors"] = colors
+        cloud = cloud_pv
+
+    try:
+        plotter = pv.Plotter(window_size=window_size)
+        plotter.set_background("white")
+        plotter.add_mesh(
+            cloud,
+            scalars="colors",
+            rgb=True,
+            style="points",
+            point_size=point_size,
+            render_points_as_spheres=True,
+        )
+        mybase = choose_rounding_base(cloud.points)
+        mybounds = rounded_bounds(cloud.points, base=mybase)
+        plotter.show_grid(
+            color="black",
+            grid="back",
+            location="outer",
+            xtitle="X [m]",
+            ytitle="Y [m]",
+            ztitle="Z [m]",
+            font_size=10,
+            ticks="outside",
+            bounds=mybounds
+        )
+        plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="black")
+        plotter.view_yz(negative=True)
+        plotter.camera.zoom(1.2)
+        if screenshot_path is not None:
+            plotter.show(screenshot=screenshot_path)
+        else:
+            plotter.show()
+    finally:
+        plotter.close()
+        del plotter
         del cloud
 
 
