@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Usage: ./run <program> [args...]
+# Applies the system pthread preload fix needed on Ubuntu 22.04+ with snap.
+set -e
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: ./run <program> [args...]"
+    echo "Programs: $(ls -1 programs/)"
+    exit 1
+fi
+
+PROG="$1"; shift
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ ! -x "$SCRIPT_DIR/$PROG" ]]; then
+    echo "Error: '$PROG' not built. Run: make $PROG"
+    exit 1
+fi
+
+exec env LD_PRELOAD=/lib/x86_64-linux-gnu/libpthread.so.0 "$SCRIPT_DIR/$PROG" "$@"
