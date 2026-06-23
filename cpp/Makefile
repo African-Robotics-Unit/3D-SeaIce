@@ -3,7 +3,7 @@ CXXFLAGS := -std=c++14 -O2 -Wall -Wextra -Iinclude
 LIBS     := -lrealsense2 -lpthread
 
 # ── Add new programs here ──────────────────────────────────────────────────────
-PROGRAMS := rs_record rgb_viewer rec_viewer
+PROGRAMS := rs_record rgb_viewer rec_viewer rs_clean test_res
 
 rgb_viewer_EXTRA_CFLAGS := $(shell pkg-config --cflags opencv4)
 rgb_viewer_EXTRA_LIBS   := $(shell pkg-config --libs   opencv4)
