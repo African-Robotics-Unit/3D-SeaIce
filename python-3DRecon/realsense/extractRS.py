@@ -5,7 +5,6 @@ config = rs.config()
 rs.config.enable_device_from_file(config, 'test.bag')
 profile = pipe.start(config)
 
-# Iterate through frames
 try:
     while True:
         frames = pipe.wait_for_frames()

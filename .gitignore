@@ -23,3 +23,6 @@ python-3DRecon/_prototyping/
 .claude/
 claude-outputs/
 claude-resources/
+
+hello_world/
+build/
