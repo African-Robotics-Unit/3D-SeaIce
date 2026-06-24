@@ -3,13 +3,19 @@ CXXFLAGS := -std=c++14 -O2 -Wall -Wextra -Iinclude
 LIBS     := -lrealsense2 -lpthread
 
 # ── Add new programs here ──────────────────────────────────────────────────────
-PROGRAMS := rs_record rgb_viewer rec_viewer rs_clean test_res
+PROGRAMS := rs_record rgb_viewer rec_viewer rs_clean test_res rs_marker
 
 rgb_viewer_EXTRA_CFLAGS := $(shell pkg-config --cflags opencv4)
 rgb_viewer_EXTRA_LIBS   := $(shell pkg-config --libs   opencv4)
 
 rec_viewer_EXTRA_CFLAGS := $(shell pkg-config --cflags opencv4)
 rec_viewer_EXTRA_LIBS   := $(shell pkg-config --libs   opencv4)
+
+rs_clean_EXTRA_CFLAGS   := $(shell pkg-config --cflags opencv4)
+rs_clean_EXTRA_LIBS     := $(shell pkg-config --libs   opencv4)
+
+rs_marker_EXTRA_CFLAGS  := $(shell pkg-config --cflags opencv4)
+rs_marker_EXTRA_LIBS    := $(shell pkg-config --libs   opencv4)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # On Ubuntu 22.04+ with snap installed, Qt's platform plugin can accidentally

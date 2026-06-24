@@ -1,4 +1,5 @@
 #include <librealsense2/rs.hpp>
+#include <opencv2/opencv.hpp>
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -90,8 +91,9 @@ int main(int argc, char* argv[])
         std::cout << "Duration     : until Ctrl+C\n";
     std::cout << std::string(60, '-') << "\n";
 
-    DepthFilters  filters;
-    rs2::align    align_to_color(RS2_STREAM_COLOR);
+    DepthFilters   filters;
+    rs2::align     align_to_color(RS2_STREAM_COLOR);
+    rs2::colorizer colorizer;
 
     auto          t_start     = std::chrono::steady_clock::now();
     long long     frame_count = 0;
@@ -118,6 +120,21 @@ int main(int argc, char* argv[])
 
         rs2::depth_frame filtered = filters.process(raw_depth).as<rs2::depth_frame>();
 
+        // Display
+        rs2::video_frame color_frame = frames.get_color_frame();
+        rs2::frame       depth_color = colorizer.colorize(filtered);
+
+        cv::Mat color_mat(color_frame.get_height(), color_frame.get_width(),
+                          CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+        cv::Mat depth_mat(depth_color.as<rs2::video_frame>().get_height(),
+                          depth_color.as<rs2::video_frame>().get_width(),
+                          CV_8UC3, (void*)depth_color.get_data(), cv::Mat::AUTO_STEP);
+
+        cv::cvtColor(color_mat, color_mat, cv::COLOR_RGB2BGR);
+        cv::imshow("RGB",              color_mat);
+        cv::imshow("Depth (filtered)", depth_mat);
+        if (cv::waitKey(1) == 'q') break;
+
         // Gather depth statistics from filtered frame
         const int w = filtered.get_width(), h = filtered.get_height();
         double sum = 0.0; int valid = 0;
@@ -129,7 +146,7 @@ int main(int argc, char* argv[])
 
         ++frame_count;
 
-        if (frame_count % 30 == 0) {
+        if (frame_count % 5 == 0) {
             double elapsed = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - t_start).count();
             double avg = valid > 0 ? sum / valid : 0.0;
