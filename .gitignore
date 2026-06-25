@@ -27,3 +27,5 @@ claude-resources/
 hello_world/
 build/
 *.exe
+*.csv
+*.mp4

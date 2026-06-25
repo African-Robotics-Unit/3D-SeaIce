@@ -9,15 +9,20 @@
 #include <chrono>
 #include <algorithm>
 #include <fstream>
+#include <ctime>
+#include <sys/stat.h>
 
 static std::atomic<bool> g_running{true};
 static void signal_handler(int) { g_running = false; }
 
 static void print_usage(const char* prog)
 {
-    std::cout << "Usage: " << prog << " [-o output.bag] [-d duration_seconds]\n"
-              << "  -o, --output    Record to .bag file     (default: no recording)\n"
+    std::cout << "Usage: " << prog << " [-o output.bag] [-D output_dir] [-d duration_seconds] [-test]\n"
+              << "  -o, --output    Record to .bag file (default: no recording)\n"
+              << "                  In -test mode: video output path (default: detections_test.mp4)\n"
+              << "  -D, --dir       Save bag + CSV into <output_dir>/<YYYYMMDD_HHMMSS>/\n"
               << "  -d, --duration  Duration in seconds     (default: run until q/Ctrl+C)\n"
+              << "  -test           RGB-only: stream with marker overlays, save annotated video\n"
               << "  -h, --help      Show this message\n";
 }
 
@@ -48,16 +53,20 @@ struct PipelineCtx {
     rs2::pipeline_profile profile;
 };
 
-static PipelineCtx start_pipeline(const std::string& output_file)
+static PipelineCtx start_pipeline(const std::string& output_file, bool test_mode)
 {
     PipelineCtx ctx;
     rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_DEPTH, 0, 848, 480, RS2_FORMAT_Z16,        5);
-    cfg.enable_stream(RS2_STREAM_COLOR, 0, 848, 480, RS2_FORMAT_RGB8,       5);
-    cfg.enable_stream(RS2_STREAM_ACCEL,             RS2_FORMAT_MOTION_XYZ32F);
-    cfg.enable_stream(RS2_STREAM_GYRO,              RS2_FORMAT_MOTION_XYZ32F);
-    if (!output_file.empty())
-        cfg.enable_record_to_file(output_file);
+    if (test_mode) {
+        cfg.enable_stream(RS2_STREAM_COLOR, 0, 1280, 720, RS2_FORMAT_RGB8, 5);
+    } else {
+        cfg.enable_stream(RS2_STREAM_DEPTH, 0, 848, 480, RS2_FORMAT_Z16,        5);
+        cfg.enable_stream(RS2_STREAM_COLOR, 0, 1280, 720, RS2_FORMAT_RGB8,       5);
+        cfg.enable_stream(RS2_STREAM_ACCEL,             RS2_FORMAT_MOTION_XYZ32F);
+        cfg.enable_stream(RS2_STREAM_GYRO,              RS2_FORMAT_MOTION_XYZ32F);
+        if (!output_file.empty())
+            cfg.enable_record_to_file(output_file);
+    }
     ctx.profile = ctx.pipe.start(cfg);
 
     auto depth_sensor = ctx.profile.get_device().first<rs2::depth_sensor>();
@@ -130,14 +139,19 @@ static std::ofstream open_csv(const std::string& path)
     return f;
 }
 
+// depth_arg may be an empty frame (test mode) — depth_m written as 0.0 in that case.
 static void log_detections(std::ofstream& f, long long frame, double timestamp_ms,
                             const std::vector<Detection>& detections,
-                            const rs2::depth_frame& depth)
+                            const rs2::frame& depth_arg)
 {
+    rs2::depth_frame depth = depth_arg.as<rs2::depth_frame>();
     for (const auto& d : detections) {
-        float depth_m = depth.get_distance(
-            std::max(0, std::min((int)d.centre.x, depth.get_width()  - 1)),
-            std::max(0, std::min((int)d.centre.y, depth.get_height() - 1)));
+        float depth_m = 0.0f;
+        if (depth) {
+            depth_m = depth.get_distance(
+                std::max(0, std::min((int)d.centre.x, depth.get_width()  - 1)),
+                std::max(0, std::min((int)d.centre.y, depth.get_height() - 1)));
+        }
         f << std::fixed << std::setprecision(3)
           << timestamp_ms    << ","
           << frame           << ","
@@ -201,19 +215,79 @@ static void draw_detections(cv::Mat& frame, const std::vector<Detection>& detect
 
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ── Session directory helpers ─────────────────────────────────────────────────
+
+static std::string timestamp_str()
+{
+    std::time_t t  = std::time(nullptr);
+    std::tm     tm = *std::localtime(&t);
+    char buf[20];
+    std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &tm);
+    return buf;
+}
+
+// Creates <parent>/<YYYYMMDD_HHMMSS>/ and returns the session directory path.
+// Creates <parent> first if it doesn't exist.
+static std::string make_session_dir(const std::string& parent)
+{
+    mkdir(parent.c_str(), 0755);  // no-op if already exists
+    std::string dir = parent + "/" + timestamp_str();
+    if (mkdir(dir.c_str(), 0755) != 0) {
+        std::cerr << "Failed to create session directory: " << dir << "\n";
+        std::exit(1);
+    }
+    return dir;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Test mode helpers ─────────────────────────────────────────────────────────
+
+// Derive video output path from the -o argument (if given), else use default.
+static std::string video_path(const std::string& arg)
+{
+    if (!arg.empty()) return arg;
+    return "detections_test.mp4";
+}
+
+static cv::VideoWriter open_video(const std::string& path, int w, int h, double fps)
+{
+    cv::VideoWriter writer(path,
+                           cv::VideoWriter::fourcc('m','p','4','v'),
+                           fps, cv::Size(w, h));
+    return writer;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 int main(int argc, char* argv[])
 {
     std::string output_file;
+    std::string output_dir;
     int         duration_sec = 0;
+    bool        test_mode    = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if ((arg == "-o" || arg == "--output") && i + 1 < argc)
             output_file = argv[++i];
+        else if ((arg == "-D" || arg == "--dir") && i + 1 < argc)
+            output_dir = argv[++i];
         else if ((arg == "-d" || arg == "--duration") && i + 1 < argc)
             duration_sec = std::stoi(argv[++i]);
+        else if (arg == "-test" || arg == "--test")
+            test_mode = true;
         else if (arg == "-h" || arg == "--help") { print_usage(argv[0]); return 0; }
         else { std::cerr << "Unknown argument: " << arg << "\n"; print_usage(argv[0]); return 1; }
+    }
+
+    if (!output_dir.empty() && !output_file.empty()) {
+        std::cerr << "Error: -o and -D cannot be used together.\n"; return 1;
+    }
+    if (!output_dir.empty()) {
+        std::string session_dir = make_session_dir(output_dir);
+        output_file = session_dir + "/session.bag";
+        std::cout << "Session : " << session_dir << "\n";
     }
 
     std::signal(SIGINT,  signal_handler);
@@ -221,25 +295,49 @@ int main(int argc, char* argv[])
 
     PipelineCtx ctx;
     try {
-        ctx = start_pipeline(output_file);
+        ctx = start_pipeline(test_mode ? "" : output_file, test_mode);
     } catch (const rs2::error& e) {
         std::cerr << "RealSense error: " << e.what() << "\n"; return 1;
     }
 
-    std::string   csv_file = csv_path(output_file);
+    std::string   csv_file = csv_path(test_mode ? "" : output_file);
     std::ofstream csv      = open_csv(csv_file);
     if (!csv.is_open()) {
         std::cerr << "Failed to open CSV: " << csv_file << "\n"; return 1;
     }
 
-    std::cout << "Detecting AprilTag 36h11 — target IDs: 92 93 94 95\n"
-              << "Streams : Depth 848x480 | Color 848x480 | Accel | Gyro\n"
-              << "Record  : " << (output_file.empty() ? "off" : output_file) << "\n"
-              << "CSV     : " << csv_file << "\n"
-              << (duration_sec > 0
-                    ? "Duration: " + std::to_string(duration_sec) + "s\n"
-                    : "Press q or Ctrl+C to stop.\n")
-              << std::string(60, '-') << "\n";
+    // ── Test mode: open video writer ──────────────────────────────────────────
+    cv::VideoWriter video_writer;
+    std::string     vid_file;
+    if (test_mode) {
+        vid_file     = video_path(output_file);
+        video_writer = open_video(vid_file, 848, 480, 5.0);
+        if (!video_writer.isOpened()) {
+            std::cerr << "Failed to open video writer: " << vid_file << "\n"; return 1;
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    if (test_mode) {
+        std::cout << "TEST MODE — RGB-only, no depth/IMU\n"
+                  << "Detecting AprilTag 36h11 — target IDs: 92 93 94 95\n"
+                  << "Stream  : Color 848x480\n"
+                  << "Video   : " << vid_file  << "\n"
+                  << "CSV     : " << csv_file  << "\n"
+                  << (duration_sec > 0
+                        ? "Duration: " + std::to_string(duration_sec) + "s\n"
+                        : "Press q or Ctrl+C to stop.\n")
+                  << std::string(60, '-') << "\n";
+    } else {
+        std::cout << "Detecting AprilTag 36h11 — target IDs: 92 93 94 95\n"
+                  << "Streams : Depth 848x480 | Color 848x480 | Accel | Gyro\n"
+                  << "Record  : " << (output_file.empty() ? "off" : output_file) << "\n"
+                  << "CSV     : " << csv_file << "\n"
+                  << (duration_sec > 0
+                        ? "Duration: " + std::to_string(duration_sec) + "s\n"
+                        : "Press q or Ctrl+C to stop.\n")
+                  << std::string(60, '-') << "\n";
+    }
 
     DepthFilters   filters;
     rs2::align     align_to_color(RS2_STREAM_COLOR);
@@ -259,54 +357,83 @@ int main(int argc, char* argv[])
         rs2::frameset frames;
         if (!ctx.pipe.poll_for_frames(&frames)) continue;
 
-        if (auto a = frames.first_or_default(RS2_STREAM_ACCEL))
-            last_accel = a.as<rs2::motion_frame>().get_motion_data();
-        if (auto g = frames.first_or_default(RS2_STREAM_GYRO))
-            last_gyro  = g.as<rs2::motion_frame>().get_motion_data();
+        if (test_mode) {
+            // ── Test mode loop: RGB only ──────────────────────────────────────
+            rs2::video_frame color_frame = frames.get_color_frame();
+            if (!color_frame) continue;
 
-        frames = align_to_color.process(frames);
-        rs2::depth_frame raw_depth = frames.get_depth_frame();
-        if (!raw_depth) continue;
+            cv::Mat color_bgr = to_bgr(color_frame);
 
-        rs2::depth_frame filtered  = filters.process(raw_depth);
-        cv::Mat          color_bgr = to_bgr(frames.get_color_frame());
-        cv::Mat          depth_bgr = depth_to_mat(colorizer.colorize(filtered));
+            cv::Mat gray;
+            cv::cvtColor(color_bgr, gray, cv::COLOR_BGR2GRAY);
+            auto detections = detect_markers(gray);
+            draw_detections(color_bgr, detections);
 
-        // ── Marker detection ─────────────────────────────────────────────────
-        cv::Mat gray;
-        cv::cvtColor(color_bgr, gray, cv::COLOR_BGR2GRAY);
-        auto detections = detect_markers(gray);
-        draw_detections(color_bgr, detections);
+            video_writer.write(color_bgr);
 
-        if (!detections.empty()) {
-            double ts_ms = std::chrono::duration<double, std::milli>(
-                std::chrono::steady_clock::now() - t_start).count();
-            log_detections(csv, frame_count, ts_ms, detections, filtered);
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
-        show_frames(color_bgr, depth_bgr);
-        if (cv::waitKey(1) == 'q') break;
-
-        // Depth stats
-        double sum = 0.0; int valid = 0;
-        const int w = filtered.get_width(), h = filtered.get_height();
-        for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x) {
-                float d = filtered.get_distance(x, y);
-                if (d > 0.0f) { sum += d; ++valid; }
+            if (!detections.empty()) {
+                double ts_ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - t_start).count();
+                log_detections(csv, frame_count, ts_ms, detections, rs2::frame{});
             }
 
-        ++frame_count;
-        if (frame_count % 5 == 0) {
-            double elapsed = std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - t_start).count();
-            print_stats(frame_count, elapsed, valid > 0 ? sum / valid : 0.0,
-                        last_accel, last_gyro);
+            cv::imshow("RGB + markers (test)", color_bgr);
+            if (cv::waitKey(1) == 'q') break;
+            // ─────────────────────────────────────────────────────────────────
+        } else {
+            // ── Normal mode loop ──────────────────────────────────────────────
+            if (auto a = frames.first_or_default(RS2_STREAM_ACCEL))
+                last_accel = a.as<rs2::motion_frame>().get_motion_data();
+            if (auto g = frames.first_or_default(RS2_STREAM_GYRO))
+                last_gyro  = g.as<rs2::motion_frame>().get_motion_data();
+
+            frames = align_to_color.process(frames);
+            rs2::depth_frame raw_depth = frames.get_depth_frame();
+            if (!raw_depth) continue;
+
+            rs2::depth_frame filtered  = filters.process(raw_depth);
+            cv::Mat          color_bgr = to_bgr(frames.get_color_frame());
+            cv::Mat          depth_bgr = depth_to_mat(colorizer.colorize(filtered));
+
+            // ── Marker detection ─────────────────────────────────────────────
+            cv::Mat gray;
+            cv::cvtColor(color_bgr, gray, cv::COLOR_BGR2GRAY);
+            auto detections = detect_markers(gray);
+            draw_detections(color_bgr, detections);
+
+            if (!detections.empty()) {
+                double ts_ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - t_start).count();
+                log_detections(csv, frame_count, ts_ms, detections, filtered);
+            }
+            // ─────────────────────────────────────────────────────────────────
+
+            show_frames(color_bgr, depth_bgr);
+            if (cv::waitKey(1) == 'q') break;
+
+            // Depth stats
+            double sum = 0.0; int valid = 0;
+            const int w = filtered.get_width(), h = filtered.get_height();
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x) {
+                    float d = filtered.get_distance(x, y);
+                    if (d > 0.0f) { sum += d; ++valid; }
+                }
+
+            if (frame_count % 5 == 0) {
+                double elapsed = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - t_start).count();
+                print_stats(frame_count, elapsed, valid > 0 ? sum / valid : 0.0,
+                            last_accel, last_gyro);
+            }
+            // ─────────────────────────────────────────────────────────────────
         }
+
+        ++frame_count;
     }
 
     ctx.pipe.stop();
+    if (test_mode) video_writer.release();
 
     double elapsed = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t_start).count();
@@ -314,7 +441,9 @@ int main(int argc, char* argv[])
               << "Frames  : " << frame_count << "\n"
               << "Duration: " << std::fixed << std::setprecision(2) << elapsed << "s\n"
               << "CSV     : " << csv_file << "\n";
-    if (!output_file.empty())
+    if (test_mode)
+        std::cout << "Video   : " << vid_file << "\n";
+    else if (!output_file.empty())
         std::cout << "Bag     : " << output_file << "\n";
 
     return 0;
