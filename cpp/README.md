@@ -1,4 +1,14 @@
 # cpp — RealSense C++ Programs
+## Running instructions: just realsense
+```
+/home/aru/agi/3D-SeaIce/cpp/run rs_marker -n 25 -D /home/aru/Documents/validationTests
+```
+
+## Lidar and Realsense
+```
+./run_both.sh
+```
+
 
 ## Layout
 
@@ -52,9 +62,10 @@ pthread fix required on Ubuntu 22.04+ when snap is installed.
 ./run rs_clean                           # record + preview (recommended recorder)
 ./run rs_clean -o session.bag -d 120     # named file, 2-minute capture
 
-./run rs_marker                          # live AprilTag detection, no recording
-./run rs_marker -o session.bag           # detect + record bag until Ctrl+C or q
-./run rs_marker -o session.bag -d 60     # detect + record for 60 s
+./run rs_marker                                      # live AprilTag detection, no recording
+./run rs_marker -o session.bag                       # detect + record bag until Ctrl+C or q
+./run rs_marker -o session.bag -d 60                 # detect + record for 60 s
+./run rs_marker -n 25 -D /path/to/output_dir         # detect for 25 frames, save timestamped bag + CSV
 ./run rs_marker --help
 ```
 
@@ -63,16 +74,31 @@ that show a live preview.
 
 ## rs_marker — AprilTag detection
 
-`rs_marker` detects AprilTag 36h11 family tags (target IDs: 92, 93, 94, 95)
-in the live colour stream and overlays the results on screen.
+`rs_marker` detects **all** AprilTag 36h11 family tags in the live colour
+stream and overlays the results on screen.
 
-**Output files** (written alongside the bag, or in the working directory if
-not recording):
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `-o <file.bag>` | Record to a named bag file |
+| `-D <dir>` | Create a timestamped session dir inside `<dir>` and save bag + CSV there |
+| `-d <seconds>` | Stop after N seconds |
+| `-n <frames>` | Stop after N frames |
+| `-test` | RGB-only mode: stream with marker overlays, save annotated video |
+| `-id` | RGB-only mode: detect all 36h11 tags and log every unique ID seen |
+
+`-o` and `-D` cannot be combined. `-test` and `-id` cannot be combined.
+
+**Output files with `-D`:**
+
+When `-D <dir>` is given, a session subdirectory `<dir>/<YYYYMMDD_HHMMSS>/` is
+created and both files are written there:
 
 | File | Contents |
 |------|----------|
-| `session.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
-| `session_detections.csv` | One row per detected tag per frame |
+| `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
+| `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
 
 **CSV columns:**
 
@@ -85,7 +111,7 @@ depth_m       — depth at that pixel from the filtered depth frame (metres)
 c0x..c3y      — four corner pixel coordinates (clockwise from top-left)
 ```
 
-Only frames where a target tag is visible produce rows — no detections, no row.
+Only frames where at least one tag is visible produce rows.
 
 **Analysing results** with the summary tool:
 
@@ -99,9 +125,8 @@ and recommends the best frame to use.
 
 **Editing the detection logic** — the marker detection section in
 `programs/rs_marker/main.cpp` is clearly fenced between `═══` banners.
-To change which tag IDs are tracked, edit `TARGET_IDS`. The `detect_markers()`
-and `draw_detections()` functions are the only ones that need to change for
-detection experiments.
+`detect_all_markers()` detects every visible 36h11 tag; `detect_markers()`
+filters by `TARGET_IDS` and is used by `-test` mode only.
 
 ## Adding a new program
 

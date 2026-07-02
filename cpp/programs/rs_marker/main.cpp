@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <fstream>
 #include <ctime>
+#include <set>
 #include <sys/stat.h>
 
 static std::atomic<bool> g_running{true};
@@ -17,12 +18,14 @@ static void signal_handler(int) { g_running = false; }
 
 static void print_usage(const char* prog)
 {
-    std::cout << "Usage: " << prog << " [-o output.bag] [-D output_dir] [-d duration_seconds] [-test]\n"
+    std::cout << "Usage: " << prog << " [-o output.bag] [-D output_dir] [-d duration_seconds] [-n frames] [-test] [-id]\n"
               << "  -o, --output    Record to .bag file (default: no recording)\n"
               << "                  In -test mode: video output path (default: detections_test.mp4)\n"
               << "  -D, --dir       Save bag + CSV into <output_dir>/<YYYYMMDD_HHMMSS>/\n"
               << "  -d, --duration  Duration in seconds     (default: run until q/Ctrl+C)\n"
+              << "  -n, --frames    Stop after N frames      (default: no frame limit)\n"
               << "  -test           RGB-only: stream with marker overlays, save annotated video\n"
+              << "  -id             RGB-only: detect ALL 36h11 tags, log unique IDs seen\n"
               << "  -h, --help      Show this message\n";
 }
 
@@ -169,7 +172,7 @@ static void log_detections(std::ofstream& f, long long frame, double timestamp_m
 //  MARKER DETECTION  — edit this section to experiment with AprilTag logic
 // ═════════════════════════════════════════════════════════════════════════════
 
-static const std::vector<int> TARGET_IDS = {92, 93, 94, 95};
+static const std::vector<int> TARGET_IDS = {0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15, 16, 93, 94, 95};
 
 // Returns detections for TARGET_IDS only, ignoring any other tags in frame.
 static std::vector<Detection> detect_markers(const cv::Mat& gray)
@@ -211,6 +214,27 @@ static void draw_detections(cv::Mat& frame, const std::vector<Detection>& detect
                     d.centre + cv::Point2f(8, -8),
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
     }
+}
+
+// Detects every 36h11 tag visible — no ID filter. Used by -id mode.
+static std::vector<Detection> detect_all_markers(const cv::Mat& gray)
+{
+    static auto dictionary = cv::aruco::getPredefinedDictionary(
+                                 cv::aruco::DICT_APRILTAG_36h11);
+    static auto params     = cv::aruco::DetectorParameters::create();
+
+    std::vector<int>                      all_ids;
+    std::vector<std::vector<cv::Point2f>> all_corners;
+    cv::aruco::detectMarkers(gray, dictionary, all_corners, all_ids, params);
+
+    std::vector<Detection> results;
+    for (size_t i = 0; i < all_ids.size(); ++i) {
+        cv::Point2f centre(0, 0);
+        for (const auto& pt : all_corners[i]) centre += pt;
+        centre *= 0.25f;
+        results.push_back({all_ids[i], all_corners[i], centre});
+    }
+    return results;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -264,8 +288,10 @@ int main(int argc, char* argv[])
 {
     std::string output_file;
     std::string output_dir;
-    int         duration_sec = 0;
-    bool        test_mode    = false;
+    int         duration_sec  = 0;
+    long long   frame_limit   = 0;   // 0 = no limit
+    bool        test_mode     = false;
+    bool        id_mode       = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -275,18 +301,26 @@ int main(int argc, char* argv[])
             output_dir = argv[++i];
         else if ((arg == "-d" || arg == "--duration") && i + 1 < argc)
             duration_sec = std::stoi(argv[++i]);
+        else if ((arg == "-n" || arg == "--frames") && i + 1 < argc)
+            frame_limit = std::stoll(argv[++i]);
         else if (arg == "-test" || arg == "--test")
             test_mode = true;
+        else if (arg == "-id" || arg == "--id")
+            id_mode = true;
         else if (arg == "-h" || arg == "--help") { print_usage(argv[0]); return 0; }
         else { std::cerr << "Unknown argument: " << arg << "\n"; print_usage(argv[0]); return 1; }
     }
 
+    if (id_mode && test_mode) {
+        std::cerr << "Error: -id and -test cannot be used together.\n"; return 1;
+    }
     if (!output_dir.empty() && !output_file.empty()) {
         std::cerr << "Error: -o and -D cannot be used together.\n"; return 1;
     }
     if (!output_dir.empty()) {
         std::string session_dir = make_session_dir(output_dir);
-        output_file = session_dir + "/session.bag";
+        std::string ts_name     = session_dir.substr(session_dir.rfind('/') + 1);
+        output_file = session_dir + "/" + ts_name + ".bag";
         std::cout << "Session : " << session_dir << "\n";
     }
 
@@ -295,15 +329,19 @@ int main(int argc, char* argv[])
 
     PipelineCtx ctx;
     try {
-        ctx = start_pipeline(test_mode ? "" : output_file, test_mode);
+        ctx = start_pipeline((test_mode || id_mode) ? "" : output_file,
+                             test_mode || id_mode);
     } catch (const rs2::error& e) {
         std::cerr << "RealSense error: " << e.what() << "\n"; return 1;
     }
 
-    std::string   csv_file = csv_path(test_mode ? "" : output_file);
-    std::ofstream csv      = open_csv(csv_file);
-    if (!csv.is_open()) {
-        std::cerr << "Failed to open CSV: " << csv_file << "\n"; return 1;
+    std::string   csv_file = id_mode ? "" : csv_path(test_mode ? "" : output_file);
+    std::ofstream csv;
+    if (!id_mode) {
+        csv = open_csv(csv_file);
+        if (!csv.is_open()) {
+            std::cerr << "Failed to open CSV: " << csv_file << "\n"; return 1;
+        }
     }
 
     // ── Test mode: open video writer ──────────────────────────────────────────
@@ -318,9 +356,18 @@ int main(int argc, char* argv[])
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    if (test_mode) {
+    if (id_mode) {
+        std::cout << "ID MODE — RGB-only, detect ALL AprilTag 36h11 tags\n"
+                  << "Wave each tag in front of the camera to confirm it works.\n"
+                  << "New unique IDs will be printed as they are detected.\n"
+                  << "Stream  : Color 1280x720\n"
+                  << (duration_sec > 0
+                        ? "Duration: " + std::to_string(duration_sec) + "s\n"
+                        : "Press q or Ctrl+C to stop.\n")
+                  << std::string(60, '-') << "\n";
+    } else if (test_mode) {
         std::cout << "TEST MODE — RGB-only, no depth/IMU\n"
-                  << "Detecting AprilTag 36h11 — target IDs: 92 93 94 95\n"
+                  << "Detecting AprilTag 36h11 — ALL tags\n"
                   << "Stream  : Color 848x480\n"
                   << "Video   : " << vid_file  << "\n"
                   << "CSV     : " << csv_file  << "\n"
@@ -329,13 +376,19 @@ int main(int argc, char* argv[])
                         : "Press q or Ctrl+C to stop.\n")
                   << std::string(60, '-') << "\n";
     } else {
-        std::cout << "Detecting AprilTag 36h11 — target IDs: 92 93 94 95\n"
+        std::cout << "Detecting AprilTag 36h11 — ALL tags\n"
                   << "Streams : Depth 848x480 | Color 848x480 | Accel | Gyro\n"
                   << "Record  : " << (output_file.empty() ? "off" : output_file) << "\n"
                   << "CSV     : " << csv_file << "\n"
                   << (duration_sec > 0
                         ? "Duration: " + std::to_string(duration_sec) + "s\n"
-                        : "Press q or Ctrl+C to stop.\n")
+                        : "")
+                  << (frame_limit > 0
+                        ? "Frames  : " + std::to_string(frame_limit) + "\n"
+                        : "")
+                  << (duration_sec == 0 && frame_limit == 0
+                        ? "Press q or Ctrl+C to stop.\n"
+                        : "")
                   << std::string(60, '-') << "\n";
     }
 
@@ -346,6 +399,7 @@ int main(int argc, char* argv[])
     auto       t_start     = std::chrono::steady_clock::now();
     long long  frame_count = 0;
     rs2_vector last_accel{}, last_gyro{};
+    std::set<int> seen_ids;  // used by -id mode
 
     while (g_running) {
         if (duration_sec > 0) {
@@ -353,11 +407,48 @@ int main(int argc, char* argv[])
                 std::chrono::steady_clock::now() - t_start).count();
             if (elapsed >= duration_sec) break;
         }
+        if (frame_limit > 0 && frame_count >= frame_limit) break;
 
         rs2::frameset frames;
         if (!ctx.pipe.poll_for_frames(&frames)) continue;
 
-        if (test_mode) {
+        if (id_mode) {
+            // ── ID mode loop: detect all 36h11 tags, log unique IDs ───────────
+            rs2::video_frame color_frame = frames.get_color_frame();
+            if (!color_frame) continue;
+
+            cv::Mat color_bgr = to_bgr(color_frame);
+            cv::Mat gray;
+            cv::cvtColor(color_bgr, gray, cv::COLOR_BGR2GRAY);
+            auto detections = detect_all_markers(gray);
+
+            for (const auto& d : detections) {
+                if (seen_ids.insert(d.id).second) {
+                    std::cout << "[NEW] ID: " << d.id
+                              << "  (total unique: " << seen_ids.size() << ")\n"
+                              << std::flush;
+                }
+            }
+
+            draw_detections(color_bgr, detections);
+
+            // Overlay unique-ID list in top-left corner
+            cv::putText(color_bgr,
+                        "Unique IDs seen: " + std::to_string(seen_ids.size()),
+                        cv::Point(10, 28),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 220, 255), 2);
+            int y = 58;
+            for (int id : seen_ids) {
+                cv::putText(color_bgr, "  " + std::to_string(id),
+                            cv::Point(10, y),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 220, 255), 1);
+                y += 22;
+            }
+
+            cv::imshow("AprilTag ID scanner (36h11)", color_bgr);
+            if (cv::waitKey(1) == 'q') break;
+            // ─────────────────────────────────────────────────────────────────
+        } else if (test_mode) {
             // ── Test mode loop: RGB only ──────────────────────────────────────
             rs2::video_frame color_frame = frames.get_color_frame();
             if (!color_frame) continue;
@@ -398,7 +489,7 @@ int main(int argc, char* argv[])
             // ── Marker detection ─────────────────────────────────────────────
             cv::Mat gray;
             cv::cvtColor(color_bgr, gray, cv::COLOR_BGR2GRAY);
-            auto detections = detect_markers(gray);
+            auto detections = detect_all_markers(gray);
             draw_detections(color_bgr, detections);
 
             if (!detections.empty()) {
@@ -439,12 +530,19 @@ int main(int argc, char* argv[])
         std::chrono::steady_clock::now() - t_start).count();
     std::cout << "\n" << std::string(60, '-') << "\n"
               << "Frames  : " << frame_count << "\n"
-              << "Duration: " << std::fixed << std::setprecision(2) << elapsed << "s\n"
-              << "CSV     : " << csv_file << "\n";
-    if (test_mode)
-        std::cout << "Video   : " << vid_file << "\n";
-    else if (!output_file.empty())
-        std::cout << "Bag     : " << output_file << "\n";
+              << "Duration: " << std::fixed << std::setprecision(2) << elapsed << "s\n";
+
+    if (id_mode) {
+        std::cout << "Unique IDs detected (" << seen_ids.size() << "): ";
+        for (int id : seen_ids) std::cout << id << " ";
+        std::cout << "\n";
+    } else {
+        std::cout << "CSV     : " << csv_file << "\n";
+        if (test_mode)
+            std::cout << "Video   : " << vid_file << "\n";
+        else if (!output_file.empty())
+            std::cout << "Bag     : " << output_file << "\n";
+    }
 
     return 0;
 }
