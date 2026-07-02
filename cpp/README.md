@@ -1,4 +1,27 @@
 # cpp — RealSense C++ Programs
+
+## Simple instructions for rs_marker
+Currently on focus on **rs_marker** program please as this has all the updated settings
+In the cpp folder:
+
+1. Compile the code:
+```
+make rs_marker
+```
+
+2. Run the code:
+```
+./run rs_marker -n 25 -D /path/to/output_dir
+```
+
+This records 25 frames and puts the following in your output directory.
+
+
+| File | Contents |
+|------|----------|
+| `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
+| `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
+
 ## Running instructions: just realsense
 ```
 /home/aru/agi/3D-SeaIce/cpp/run rs_marker -n 25 -D /home/aru/Documents/validationTests
