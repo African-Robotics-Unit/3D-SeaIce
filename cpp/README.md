@@ -28,6 +28,47 @@ cpp/
     └── rs_marker/             # live AprilTag detection with optional recording + CSV log
 ```
 
+## Dependencies
+
+### OpenCV (with ArUco support)
+
+`rs_marker` requires OpenCV with the ArUco module. On Ubuntu 22.04 the apt
+package includes it:
+
+```bash
+sudo apt update
+sudo apt install libopencv-dev
+```
+
+Verify ArUco is present after install:
+
+```bash
+pkg-config --modversion opencv4        # should print 4.x.x
+grep -r aruco /usr/include/opencv4/opencv2/ --include="*.hpp" -l
+```
+
+If ArUco headers are missing (older distros or minimal installs), build
+OpenCV from source with the contrib modules:
+
+```bash
+sudo apt install cmake build-essential libgtk2.0-dev pkg-config
+git clone https://github.com/opencv/opencv.git
+git clone https://github.com/opencv/opencv_contrib.git
+cd opencv && mkdir build && cd build
+cmake .. -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules \
+         -DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+```
+
+### librealsense2
+
+Follow the [official Intel guide](https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md) to add the apt repository, then:
+
+```bash
+sudo apt install librealsense2-dev librealsense2-utils
+```
+
 ## Build
 
 ```bash
