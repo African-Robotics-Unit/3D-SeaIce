@@ -1,31 +1,10 @@
 # cpp — RealSense C++ Programs
-## Prerequisites
-
-### librealsense2
-
-Follow the [official Intel guide](https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md) if you get stuck
-
-```bash
-sudo apt install librealsense2-dev librealsense2-utils
-```
-
-### opencv
-```bash
-sudo apt install libopencv-dev
-```
-
-## Check if Realsense installed
-This will open the Realsense Viewer
-```bash
-realsense-viewer
-```
 
 ## Simple instructions for rs_marker
 Currently on focus on **rs_marker** program please as this has all the updated settings
 In the cpp folder:
 
 1. Compile the code:
-In the cpp folder:
 ```
 make rs_marker
 ```
@@ -42,8 +21,6 @@ This records 25 frames and puts the following in your output directory.
 |------|----------|
 | `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
 | `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
-| `<YYYYMMDD_HHMMSS>.ply` | Point cloud of the best frame (most valid depth pixels / fewest holes), fully post-processed |
-| `imu.csv` | Accel + gyro sample captured alongside the best frame |
 
 ## Running instructions: just realsense
 ```
@@ -70,8 +47,8 @@ cpp/
     ├── rs_record/             # record depth + colour to .bag
     ├── rgb_viewer/            # live RGB preview
     ├── rec_viewer/            # record + live depth/colour preview with IMU stats
-    ├── rs_clean/              # clean recorder with live display (recommended)
-    └── rs_marker/             # live AprilTag detection with optional recording + CSV log
+    ├── rs_clean/              # clean recorder with live display
+    └── rs_marker/             # live AprilTag detection with optional recording + CSV log (USE THIS)
 ```
 
 ## Dependencies
@@ -186,15 +163,6 @@ created and both files are written there:
 |------|----------|
 | `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
 | `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
-| `<YYYYMMDD_HHMMSS>.ply` | Point cloud of the best frame (most valid depth pixels / fewest holes), fully post-processed |
-| `imu.csv` | Accel + gyro sample captured alongside the best frame |
-
-**Best-frame selection:** in normal mode (not `-test`/`-id`), every depth frame
-is fully post-processed (decimation → disparity → spatial → temporal →
-disparity → hole-filling) and its valid-pixel count is compared against the
-best seen so far. When the run ends, the frame with the fewest remaining
-holes is exported to a `.ply` point cloud (textured with its color frame),
-and the accel/gyro reading captured alongside it is written to `imu.csv`.
 
 **CSV columns:**
 
@@ -219,66 +187,10 @@ python3 tools/summarize_markers.py session_detections.csv --top 20
 The summary reports which frames had the most markers visible simultaneously
 and recommends the best frame to use.
 
-## Running instructions used for tests: 
-```
-/home/aru/agi/3D-SeaIce/cpp/run rs_marker -n 25 -D /home/aru/Documents/validationTests
-```
-
-## Lidar and Realsense
-```
-./run_both.sh
-```
-
-
-## Build
-
-```bash
-# Build all programs
-make
-
-# Build one program
-make rs_marker
-
-# Clean all build artefacts and binaries
-make clean
-```
-
-Binaries land in `cpp/` alongside the Makefile.
-
-## Run
-
-Use the `./run` script rather than calling binaries directly — it applies a
-pthread fix required on Ubuntu 22.04+ when snap is installed.
-
-```bash
-./run rs_marker                                      # live AprilTag detection, no recording
-./run rs_marker -o session.bag                       # detect + record bag until Ctrl+C or q
-./run rs_marker -o session.bag -d 60                 # detect + record for 60 s
-./run rs_marker -n 25 -D /path/to/output_dir         # detect for 25 frames, save timestamped bag + CSV
-./run rs_marker --help
-```
-
-Press `q` in any display window or `Ctrl+C` in the terminal to stop programs
-that show a live preview.
-
-
-## Layout
-
-```
-cpp/
-├── Makefile
-├── run                        # launcher script (handles Ubuntu pthread fix)
-├── include/                   # shared headers
-├── src/                       # shared library sources (compiled once)
-├── tools/
-│   └── summarize_markers.py   # analyse a detections CSV from rs_marker
-└── programs/
-    ├── rs_record/             # record depth + colour to .bag
-    ├── rgb_viewer/            # live RGB preview
-    ├── rec_viewer/            # record + live depth/colour preview with IMU stats
-    ├── rs_clean/              # clean recorder with live display 
-    └── rs_marker/             # live AprilTag detection with optional recording + CSV log
-```
+**Editing the detection logic** — the marker detection section in
+`programs/rs_marker/main.cpp` is clearly fenced between `═══` banners.
+`detect_all_markers()` detects every visible 36h11 tag; `detect_markers()`
+filters by `TARGET_IDS` and is used by `-test` mode only.
 
 ## Adding a new program
 
@@ -300,3 +212,10 @@ cpp/
 
 The shared library (`src/d456_recorder.cpp`) is available to every program
 automatically via `-Iinclude` and linked into each binary.
+
+## Non-standard install paths
+
+```bash
+make CXXFLAGS="-std=c++14 -O2 -Iinclude -I/opt/librealsense2/include" \
+     LIBS="-L/opt/librealsense2/lib -lrealsense2 -lpthread"
+```

@@ -9,6 +9,90 @@ rosbags, trimesh, and scipy.
 
 ---
 
+## Setup
+
+Python 3.9+
+
+```bash
+pip install open3d pyvista pyvistaqt rosbags numpy scipy pandas \
+            trimesh pymeshfix shapely matplotlib
+```
+
+| Package | Role |
+|---------|------|
+| `open3d` | Point cloud I/O, voxel downsampling, Poisson reconstruction |
+| `rosbags` | Read Livox LiDAR data from ROS1 `.bag` files |
+| `pyvista` / `pyvistaqt` | 3D visualisation |
+| `numpy` / `scipy` | Numerics, interpolation, statistics |
+| `pandas` | Grid-based max-Z aggregation |
+| `trimesh` / `pymeshfix` | Mesh repair and watertight closing |
+| `shapely` | Convex hull masking |
+| `matplotlib` | Height profile and statistics plots |
+
+### Configuration
+
+All parameters are in `config/p3_config.json`. Edit this before running:
+
+```json
+{
+  "outputFolder": "/path/to/output/",
+  "preprocessing": {
+    "pathname": "/path/to/bag/files/",
+    "scanOrder": "ABCDEFGH",
+    "coarseALN": "/path/to/coarse_tforms.aln",
+    "roi": { "x": ["-inf","inf"], "y": ["-inf","inf"], "z": ["-inf","inf"] }
+  },
+  "ICPOptions": {
+    "UniformSamplingDistance": 0.2,
+    "PlaneSearchRadius": 0.1,
+    "MaxNoIt": 5
+  },
+  "intensityFilter": { "intensityMin": 0, "intensityMax": 200 },
+  "geometry": { "downsampleGrid": 0.01, "interpolateGrid": 0.005 }
+}
+```
+
+---
+
+## Running the Pipeline
+
+### Step 0 - Set your ROI
+
+Before running the pipeline, define the cropping region using the interactive tool. It loads the first-frame test cloud and lets you adjust bounds with a live 3D preview.
+
+```bash
+python utils/adjustCrop.py
+```
+
+Enter bounds as `[[xmin,xmax],[ymin,ymax],[zmin,zmax]]` -- `inf` and `-inf` are supported. Accepted bounds are saved back to `p3_config.json` automatically.
+
+### Steps 1-4
+
+Run all scripts from the **repo root** in order:
+
+```bash
+python python-3DRecon/pipeline/01_preprocessClouds.py
+
+python python-3DRecon/pipeline/02_fine_alignment_glira.py \
+    /path/to/BeforeICP/ \
+    --config python-3DRecon/config/p3_config.json
+
+python python-3DRecon/pipeline/03_postICP.py
+
+python python-3DRecon/pipeline/04_geometry_analysis.py
+```
+
+| # | Script | Input | Output | Description |
+|---|--------|-------|--------|-------------|
+| 1 | `01_preprocessClouds.py` | `.bag` files | `BeforeICP/*.ply` | Extract LiDAR from ROS bags, crop ROI, floor-align with RANSAC, apply coarse alignment transforms |
+| 2 | `02_fine_alignment_glira.py` | `BeforeICP/*.ply` | `AfterICP/ICPtforms.aln` | Global weighted point-to-plane ICP across all scan pairs simultaneously (Python port of GliraICP) |
+| 3 | `03_postICP.py` | `AfterICP/*.ply` + `.aln` | `totalCake_with_planks.ply` | Apply ICP transforms, filter by intensity and overlap, merge into single cloud |
+| 4 | `04_geometry_analysis.py` | `totalCake_with_planks.ply` | mesh + stats | Isolate top surface, interpolate Z-grid, compute height statistics, detect peaks, Poisson mesh |
+
+**Note on coarse alignment:** step 1 requires a pre-computed coarse alignment `.aln` file (path set in config). This transform accounts for the rough relative pose between scan positions and is produced separately -- see the MATLAB `coarseAlignment.m` script or provide your own rigid transforms.
+
+---
+
 ## Pipeline Stages
 
 ### 1. `preprocessClouds.py` — Raw Cloud Extraction & Preparation
@@ -89,6 +173,16 @@ Performs final geometric characterisation of the merged cloud:
 ---
 
 ## Internal Tools & Library Modules
+
+Modules in `tools/` can be imported directly in your own scripts:
+
+```python
+import tools.pcsurface as pcsurface
+import tools.pcmesh as pcmesh
+
+pc_top = pcsurface.isolate_surface(cloud)
+mesh   = pcmesh.pc_to_surface_mesh(pc_top, depth=9)
+```
 
 | Module | Purpose |
 |--------|---------|
