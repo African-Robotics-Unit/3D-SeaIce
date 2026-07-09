@@ -142,6 +142,34 @@ static std::ofstream open_csv(const std::string& path)
     return f;
 }
 
+// Derives ply path from bag name: "capture.bag" → "capture.ply".
+// Falls back to "best_frame.ply" when not recording.
+static std::string ply_path(const std::string& bag)
+{
+    if (bag.empty()) return "best_frame.ply";
+    auto dot = bag.rfind('.');
+    return (dot == std::string::npos ? bag : bag.substr(0, dot)) + ".ply";
+}
+
+// Directory portion of a path, or "." if there is none.
+static std::string dir_of(const std::string& path)
+{
+    auto slash = path.rfind('/');
+    return slash == std::string::npos ? "." : path.substr(0, slash);
+}
+
+// Writes the IMU sample captured alongside the selected best frame.
+static void write_imu_csv(const std::string& path, long long frame, double timestamp_ms,
+                          rs2_vector accel, rs2_vector gyro)
+{
+    std::ofstream f(path);
+    f << "frame,timestamp_ms,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n";
+    f << std::fixed << std::setprecision(6)
+      << frame << "," << timestamp_ms << ","
+      << accel.x << "," << accel.y << "," << accel.z << ","
+      << gyro.x  << "," << gyro.y  << "," << gyro.z  << "\n";
+}
+
 // depth_arg may be an empty frame (test mode) — depth_m written as 0.0 in that case.
 static void log_detections(std::ofstream& f, long long frame, double timestamp_ms,
                             const std::vector<Detection>& detections,
@@ -344,6 +372,13 @@ int main(int argc, char* argv[])
         }
     }
 
+    // ── Best-frame outputs: only meaningful in normal mode (depth + IMU) ──────
+    bool        capture_best = !test_mode && !id_mode;
+    std::string ply_file     = capture_best ? ply_path(output_file) : "";
+    std::string imu_file     = capture_best
+        ? (output_file.empty() ? "imu.csv" : dir_of(output_file) + "/imu.csv")
+        : "";
+
     // ── Test mode: open video writer ──────────────────────────────────────────
     cv::VideoWriter video_writer;
     std::string     vid_file;
@@ -380,6 +415,8 @@ int main(int argc, char* argv[])
                   << "Streams : Depth 848x480 | Color 848x480 | Accel | Gyro\n"
                   << "Record  : " << (output_file.empty() ? "off" : output_file) << "\n"
                   << "CSV     : " << csv_file << "\n"
+                  << "PLY     : " << ply_file << "  (best frame — least holes)\n"
+                  << "IMU     : " << imu_file << "\n"
                   << (duration_sec > 0
                         ? "Duration: " + std::to_string(duration_sec) + "s\n"
                         : "")
@@ -395,11 +432,20 @@ int main(int argc, char* argv[])
     DepthFilters   filters;
     rs2::align     align_to_color(RS2_STREAM_COLOR);
     rs2::colorizer colorizer;
+    rs2::pointcloud pc;
 
     auto       t_start     = std::chrono::steady_clock::now();
     long long  frame_count = 0;
     rs2_vector last_accel{}, last_gyro{};
     std::set<int> seen_ids;  // used by -id mode
+
+    // ── Best-frame tracking (normal mode): most valid depth pixels = fewest holes ──
+    rs2::depth_frame best_depth{rs2::frame{}};
+    rs2::video_frame best_color{rs2::frame{}};
+    rs2_vector       best_accel{}, best_gyro{};
+    long long        best_frame_idx    = -1;
+    double           best_ts_ms        = 0.0;
+    int              best_valid_pixels = -1;
 
     while (g_running) {
         if (duration_sec > 0) {
@@ -482,9 +528,13 @@ int main(int argc, char* argv[])
             rs2::depth_frame raw_depth = frames.get_depth_frame();
             if (!raw_depth) continue;
 
-            rs2::depth_frame filtered  = filters.process(raw_depth);
-            cv::Mat          color_bgr = to_bgr(frames.get_color_frame());
-            cv::Mat          depth_bgr = depth_to_mat(colorizer.colorize(filtered));
+            rs2::depth_frame filtered   = filters.process(raw_depth);
+            rs2::video_frame color_frame = frames.get_color_frame();
+            cv::Mat          color_bgr  = to_bgr(color_frame);
+            cv::Mat          depth_bgr  = depth_to_mat(colorizer.colorize(filtered));
+
+            double ts_ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t_start).count();
 
             // ── Marker detection ─────────────────────────────────────────────
             cv::Mat gray;
@@ -492,11 +542,8 @@ int main(int argc, char* argv[])
             auto detections = detect_all_markers(gray);
             draw_detections(color_bgr, detections);
 
-            if (!detections.empty()) {
-                double ts_ms = std::chrono::duration<double, std::milli>(
-                    std::chrono::steady_clock::now() - t_start).count();
+            if (!detections.empty())
                 log_detections(csv, frame_count, ts_ms, detections, filtered);
-            }
             // ─────────────────────────────────────────────────────────────────
 
             show_frames(color_bgr, depth_bgr);
@@ -510,6 +557,17 @@ int main(int argc, char* argv[])
                     float d = filtered.get_distance(x, y);
                     if (d > 0.0f) { sum += d; ++valid; }
                 }
+
+            // Best-frame selection: most valid depth pixels == fewest holes
+            if (valid > best_valid_pixels) {
+                best_valid_pixels = valid;
+                best_depth        = filtered;
+                best_color        = color_frame;
+                best_accel        = last_accel;
+                best_gyro         = last_gyro;
+                best_frame_idx    = frame_count;
+                best_ts_ms        = ts_ms;
+            }
 
             if (frame_count % 5 == 0) {
                 double elapsed = std::chrono::duration<double>(
@@ -526,6 +584,15 @@ int main(int argc, char* argv[])
     ctx.pipe.stop();
     if (test_mode) video_writer.release();
 
+    // ── Export best frame (most valid depth pixels = fewest holes) ────────────
+    if (capture_best && best_valid_pixels >= 0) {
+        pc.map_to(best_color);
+        rs2::points points = pc.calculate(best_depth);
+        points.export_to_ply(ply_file, best_color);
+        write_imu_csv(imu_file, best_frame_idx, best_ts_ms, best_accel, best_gyro);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     double elapsed = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t_start).count();
     std::cout << "\n" << std::string(60, '-') << "\n"
@@ -538,10 +605,19 @@ int main(int argc, char* argv[])
         std::cout << "\n";
     } else {
         std::cout << "CSV     : " << csv_file << "\n";
-        if (test_mode)
+        if (test_mode) {
             std::cout << "Video   : " << vid_file << "\n";
-        else if (!output_file.empty())
-            std::cout << "Bag     : " << output_file << "\n";
+        } else {
+            if (!output_file.empty())
+                std::cout << "Bag     : " << output_file << "\n";
+            if (best_valid_pixels >= 0) {
+                std::cout << "PLY     : " << ply_file
+                          << "  (frame " << best_frame_idx << ")\n"
+                          << "IMU     : " << imu_file << "\n";
+            } else {
+                std::cout << "PLY     : (skipped — no depth frame captured)\n";
+            }
+        }
     }
 
     return 0;

@@ -21,6 +21,8 @@ This records 25 frames and puts the following in your output directory.
 |------|----------|
 | `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
 | `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
+| `<YYYYMMDD_HHMMSS>.ply` | Point cloud of the best frame (most valid depth pixels / fewest holes), fully post-processed |
+| `imu.csv` | Accel + gyro sample captured alongside the best frame |
 
 ## Running instructions: just realsense
 ```
@@ -163,6 +165,15 @@ created and both files are written there:
 |------|----------|
 | `<YYYYMMDD_HHMMSS>.bag` | Raw sensor frames — Depth, Color, Accel, Gyro |
 | `<YYYYMMDD_HHMMSS>_detections.csv` | One row per detected tag per frame |
+| `<YYYYMMDD_HHMMSS>.ply` | Point cloud of the best frame (most valid depth pixels / fewest holes), fully post-processed |
+| `imu.csv` | Accel + gyro sample captured alongside the best frame |
+
+**Best-frame selection:** in normal mode (not `-test`/`-id`), every depth frame
+is fully post-processed (decimation → disparity → spatial → temporal →
+disparity → hole-filling) and its valid-pixel count is compared against the
+best seen so far. When the run ends, the frame with the fewest remaining
+holes is exported to a `.ply` point cloud (textured with its color frame),
+and the accel/gyro reading captured alongside it is written to `imu.csv`.
 
 **CSV columns:**
 
