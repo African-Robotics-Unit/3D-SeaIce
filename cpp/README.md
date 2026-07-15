@@ -5,9 +5,27 @@
 
 Follow the [official Intel guide](https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md) if you get stuck
 
+**Install version 2.56.x, not the latest.** `rs_marker` records to a `.bag`
+file. librealsense 2.57+ switched `enable_record_to_file` to require the
+newer `.db3` (rosbag2) format — recording will fail with a `db3` error on
+those versions. 2.56.x is the last line that still writes `.bag`.
+
 ```bash
-sudo apt install librealsense2-dev librealsense2-utils
+# See available versions and pick a 2.56.x one
+apt-cache madison librealsense2-dev | grep 2.56
+
+# Install that exact version across all the realsense packages
+sudo apt install librealsense2=2.56.5-0~realsense.17055 \
+                  librealsense2-dev=2.56.5-0~realsense.17055 \
+                  librealsense2-utils=2.56.5-0~realsense.17055 \
+                  librealsense2-gl=2.56.5-0~realsense.17055
+
+# Prevent apt from silently upgrading past 2.56.x later
+sudo apt-mark hold librealsense2 librealsense2-dev librealsense2-utils librealsense2-gl
 ```
+
+Check what you have installed with `dpkg -l | grep librealsense2` or
+`rs-enumerate-devices --version`.
 
 ### opencv
 ```bash
@@ -114,8 +132,17 @@ sudo make install
 
 Follow the [official Intel guide](https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md) to add the apt repository, then:
 
+**Install version 2.56.x, not the latest** — see the note in
+[Prerequisites](#librealsense2) above for why (librealsense 2.57+ requires
+`.db3` recordings instead of the `.bag` files this codebase uses).
+
 ```bash
-sudo apt install librealsense2-dev librealsense2-utils
+apt-cache madison librealsense2-dev | grep 2.56
+sudo apt install librealsense2=2.56.5-0~realsense.17055 \
+                  librealsense2-dev=2.56.5-0~realsense.17055 \
+                  librealsense2-utils=2.56.5-0~realsense.17055 \
+                  librealsense2-gl=2.56.5-0~realsense.17055
+sudo apt-mark hold librealsense2 librealsense2-dev librealsense2-utils librealsense2-gl
 ```
 
 ## Build
