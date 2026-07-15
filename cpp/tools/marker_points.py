@@ -1,29 +1,45 @@
 #!/usr/bin/env python3
 """
-marker_points.py — extract 3D marker positions from a RealSense .bag +
-AprilTag detection CSV, and save them as a small .ply point cloud (in the
-same depth optical frame as your reconstructed point clouds) for overlay/QC
-in CloudCompare, Open3D, etc.
+marker_points.py — batch-extract 3D marker positions from a folder of
+RealSense .bag recordings + their AprilTag detection CSVs, and save one
+output file per recording (in the same depth optical frame as your
+reconstructed point clouds) for overlay/QC in CloudCompare, Open3D, etc.,
+or for downstream analysis.
 
 Usage:
-    python marker_points.py recording.bag detections.csv markers.ply
+    python3 marker_points.py <raw_dir> <collected_dir> [--format ply|csv]
 
-CSV columns expected (header required):
+<raw_dir>        folder of raw .bag recordings, e.g. .../20260714_raw
+<collected_dir>  collect_plys.py output folder, e.g. .../20260714_collected
+                 (must contain a detections/ subfolder of *_detections.csv)
+
+Each <collected_dir>/detections/<stem>_detections.csv is paired with
+<raw_dir>/<stem>.bag (matched by timestamp stem). Recordings with no
+matching bag, or with an empty detections CSV, are reported and skipped —
+everything else is still processed.
+
+Output is written to a new subfolder of <collected_dir>:
+    marker_ply/<stem>.ply   (--format ply, default)
+    marker_csv/<stem>.csv   (--format csv)
+
+--format ply: one point per CSV row (no aggregation), colored by marker_id,
+              so you can see all detected instances at once and do your own
+              filtering/manipulation afterward.
+--format csv: one row per unique marker_id: marker_id,x,y,z, where x/y/z is
+              the per-axis median over all of that marker's extracted points
+              in this recording (robust to the rare stray bad detection).
+
+CSV columns expected in each detections CSV (header required):
     timestamp_ms,frame,marker_id,cx,cy,depth_m,c0x,c0y,c1x,c1y,c2x,c2y,c3x,c3y
 
 Only frame, marker_id, cx, cy are used. depth_m from the CSV is ignored —
 depth is re-sampled from the bag itself (median over a small pixel window),
-since single-pixel reads at the marker center frequently land on holes
-(as in your sample row, where depth_m = 0.000).
+since single-pixel reads at the marker center frequently land on holes.
 
-Detections were made on the COLOR image, but your reconstructed .ply lives
+Detections were made on the COLOR image, but the reconstructed .ply lives
 in the DEPTH optical frame — so each point is deprojected using the color
 intrinsics, then transformed through the color->depth extrinsics to land in
-the same frame as your existing point clouds.
-
-One output point per CSV row (no aggregation) — every detected marker
-instance becomes a point, colored by marker_id, so you can see all of them
-at once and do your own filtering/manipulation afterward.
+the same frame as the reconstructed point clouds.
 
 Requires: pyrealsense2, numpy, open3d
     pip install pyrealsense2 numpy open3d
@@ -32,6 +48,7 @@ Requires: pyrealsense2, numpy, open3d
 import sys
 import csv
 import argparse
+from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
@@ -73,17 +90,14 @@ PALETTE = np.array([
 ], dtype=np.float64) / 255.0
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("bag", help="input .bag recording")
-    ap.add_argument("csv", help="AprilTag detections CSV")
-    ap.add_argument("out_ply", help="output .ply of marker points")
-    args = ap.parse_args()
-
-    detections_by_frame = load_detections(args.csv)
+def extract_markers(bag_path, csv_path):
+    """Returns (points, marker_ids, n_frames, n_skipped_depth) for one recording."""
+    detections_by_frame = load_detections(csv_path)
+    if not detections_by_frame:
+        return [], [], 0, 0
 
     cfg = rs.config()
-    cfg.enable_device_from_file(args.bag, repeat_playback=False)
+    cfg.enable_device_from_file(str(bag_path), repeat_playback=False)
     pipe = rs.pipeline()
     profile = pipe.start(cfg)
     profile.get_device().as_playback().set_real_time(False)
@@ -94,8 +108,9 @@ def main():
 
     align = rs.align(rs.stream.color)
 
-    points, colors = [], []
+    points, marker_ids = [], []
     n_frames = 0
+    n_skipped_depth = 0
 
     while True:
         ok, frameset = pipe.try_wait_for_frames(timeout_ms=2000)
@@ -116,26 +131,92 @@ def main():
         for marker_id, cx, cy in rows:
             d = median_depth(depth_frame, cx, cy)
             if d is None:
-                print(f"frame {frame_num} marker {marker_id}: no valid depth at ({cx:.0f},{cy:.0f}), skipped")
+                n_skipped_depth += 1
                 continue
 
             p_color = rs.rs2_deproject_pixel_to_point(color_intrin, [cx, cy], d)
             p_depth = rs.rs2_transform_point_to_point(color_to_depth, p_color)
+            # rs_marker's .ply is written via rs2::points::export_to_ply(), which
+            # negates y and z (librealsense/src/points.cpp) before saving. Match
+            # that here so marker points land in the same frame as those .ply files.
+            p_depth = [p_depth[0], -p_depth[1], -p_depth[2]]
 
             points.append(p_depth)
-            colors.append(PALETTE[marker_id % len(PALETTE)])
+            marker_ids.append(marker_id)
 
     pipe.stop()
-    print(f"Processed {n_frames} frames, extracted {len(points)} marker points.")
+    return points, marker_ids, n_frames, n_skipped_depth
 
-    if not points:
-        sys.exit("No marker points extracted — check that CSV 'frame' matches this bag's color frame_number().")
 
+def write_marker_ply(out_path, points, marker_ids):
+    colors = [PALETTE[mid % len(PALETTE)] for mid in marker_ids]
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(np.array(points))
     pcd.colors = o3d.utility.Vector3dVector(np.array(colors))
-    o3d.io.write_point_cloud(args.out_ply, pcd)
-    print(f"Wrote {args.out_ply}")
+    o3d.io.write_point_cloud(str(out_path), pcd)
+
+
+def write_marker_csv(out_path, points, marker_ids):
+    """One row per unique marker_id: marker_id,x,y,z (per-axis median of that marker's points)."""
+    points = np.array(points)
+    marker_ids = np.array(marker_ids)
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["marker_id", "x", "y", "z"])
+        for mid in sorted(set(marker_ids)):
+            xyz = np.median(points[marker_ids == mid], axis=0)
+            writer.writerow([mid, *xyz])
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("raw_dir", type=Path, help="folder of raw .bag recordings")
+    ap.add_argument("collected_dir", type=Path,
+                     help="collect_plys.py output folder (must contain detections/)")
+    ap.add_argument("--format", choices=["ply", "csv"], default="ply",
+                     help="output type: ply = one point per detection, "
+                          "csv = one row per unique marker_id (default: ply)")
+    args = ap.parse_args()
+
+    detections_dir = args.collected_dir / "detections"
+    if not detections_dir.is_dir():
+        sys.exit(f"Error: {detections_dir} not found")
+
+    csv_files = sorted(detections_dir.glob("*_detections.csv"))
+    if not csv_files:
+        sys.exit(f"No *_detections.csv files found in {detections_dir}")
+
+    out_dir = args.collected_dir / ("marker_csv" if args.format == "csv" else "marker_ply")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    n_ok = n_no_bag = n_empty = 0
+    for csv_path in csv_files:
+        stem = csv_path.name[: -len("_detections.csv")]
+        bag_path = args.raw_dir / f"{stem}.bag"
+
+        if not bag_path.is_file():
+            print(f"{stem}: no matching bag in {args.raw_dir}, skipped")
+            n_no_bag += 1
+            continue
+
+        points, marker_ids, n_frames, n_skipped_depth = extract_markers(bag_path, csv_path)
+        if not points:
+            print(f"{stem}: no marker points extracted (processed {n_frames} frames), skipped")
+            n_empty += 1
+            continue
+
+        if args.format == "csv":
+            out_path = out_dir / f"{stem}.csv"
+            write_marker_csv(out_path, points, marker_ids)
+            print(f"{stem}: {len(set(marker_ids))} unique markers -> {out_path.name}")
+        else:
+            out_path = out_dir / f"{stem}.ply"
+            write_marker_ply(out_path, points, marker_ids)
+            print(f"{stem}: {len(points)} points ({n_skipped_depth} skipped, no valid depth) -> {out_path.name}")
+
+        n_ok += 1
+
+    print(f"\nDone: {n_ok} written, {n_no_bag} missing bag, {n_empty} empty detections -> {out_dir}")
 
 
 if __name__ == "__main__":

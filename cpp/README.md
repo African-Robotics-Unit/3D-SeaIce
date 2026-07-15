@@ -65,7 +65,10 @@ cpp/
 ├── include/                   # shared headers
 ├── src/                       # shared library sources (compiled once)
 ├── tools/
-│   └── summarize_markers.py   # analyse a detections CSV from rs_marker
+│   ├── summarize_markers.py   # analyse a detections CSV from rs_marker
+│   ├── marker_points.py       # extract 3D marker positions from a .bag + detections CSV
+│   ├── collect_plys.py        # gather .bag/.ply/detections/imu files across many recordings
+│   └── tabulate_data.py       # one-row-per-recording metadata CSV from bag headers + collected files
 └── programs/
     ├── rs_record/             # record depth + colour to .bag
     ├── rgb_viewer/            # live RGB preview
@@ -219,6 +222,107 @@ python3 tools/summarize_markers.py session_detections.csv --top 20
 The summary reports which frames had the most markers visible simultaneously
 and recommends the best frame to use.
 
+## collect_plys.py — gather outputs across many recordings
+
+Each rs_marker run leaves its `.bag`, `.ply`, `_detections.csv` and `imu.csv`
+buried in its own `<YYYYMMDD_HHMMSS>/` session folder. `collect_plys.py`
+walks a top-level recordings folder (recursively, across any number of
+session subfolders) and gathers those files into flat, per-type output
+folders — handy before batch-processing a day's worth of recordings or
+archiving just the point clouds.
+
+**Default mode — just pass the recordings folder:**
+
+```bash
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714
+```
+
+With no `dst`, this is the common case and needs nothing else: it creates
+two folders next to `src`,
+
+| Folder | Contents |
+|--------|----------|
+| `20260714_collected/ply/` | every `.ply` |
+| `20260714_collected/detections/` | every `_detections.csv` |
+| `20260714_collected/imu/` | every `imu.csv`, renamed `<recording_folder>_imu.csv` |
+| `20260714_raw/` | every `.bag`, flat (no subfolder) |
+
+Equivalent to running:
+
+```bash
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_collected --types ply detections imu
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_raw       --types bag --flat
+```
+
+**Custom mode — pass an explicit `dst` to control which types and layout:**
+
+```bash
+# Collect everything (bag, ply, detections, imu) into dst/<type>/
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_collected
+
+# Collect only .ply and imu.csv
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_collected --types ply imu
+
+# Symlink instead of copy (saves disk space, e.g. for a quick look in CloudCompare)
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_collected --mode symlink
+
+# Move instead of copy (source files are removed)
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_collected --mode move
+
+# Collect just the raw .bag files into a plain folder (no dst/bag/ subfolder)
+python3 tools/collect_plys.py /media/aru/Seagate/roughness/20260714 /media/aru/Seagate/roughness/20260714_raw --types bag --flat
+```
+
+**Flags** (`--types` and `--flat` require an explicit `dst` — omit both, and `dst`, to use default mode):
+
+| Flag | Description |
+|------|-------------|
+| `--types {bag,ply,detections,imu}` | Which file type(s) to collect (default: all four) |
+| `--mode {copy,symlink,move}` | How to place files in dst (default: `copy`) |
+| `--flat` | Write straight into `dst` instead of `dst/<type>/` — use with a single `--types` value |
+| `--prefix-parent` | Always prefix output filenames with `<recording_folder>_`, even for types that aren't normally ambiguous |
+
+`.bag`, `.ply` and `_detections.csv` filenames already embed the recording
+timestamp, so they land in the output folder unchanged unless that would
+collide with another file. `imu.csv` is named identically in every session
+folder, so it is always renamed to `<recording_folder>_imu.csv`.
+
+## tabulate_data.py — one-row-per-recording metadata table
+
+Assumes `collect_plys.py` default mode has already been run on `src`, so
+`<src>_raw/` and `<src>_collected/{ply,detections,imu}/` exist next to it.
+Reads each `.bag`'s header — no pyrealsense2 or ROS install needed, just the
+[`rosbags`](https://pypi.org/project/rosbags/) package — and cross-references
+`<src>_collected/` for the matching ply/detections/imu file, writing one CSV
+row per recording (`NaN` for anything missing or unreadable).
+
+```bash
+pip install --break-system-packages rosbags   # one-time
+
+python3 tools/tabulate_data.py /media/aru/Seagate/roughness/20260714
+# -> writes /media/aru/Seagate/roughness/20260714_metadata.csv
+
+python3 tools/tabulate_data.py /media/aru/Seagate/roughness/20260714 --out /tmp/meta.csv
+```
+
+**Columns:**
+
+| Column | Source |
+|--------|--------|
+| `Name`, `Start`, `End`, `Duration`, `Size` | bag header + filesystem |
+| `Device`, `Serial`, `Firmware` | `/device_0/info` in the bag |
+| `Depth_Frames`, `Color_Frames` | per-topic message counts |
+| `Depth_FPS`, `Color_FPS` | frame count ÷ duration |
+| `Depth_Res`, `Color_Res` | `camera_info` width×height |
+| `Accel_Samples`, `Gyro_Samples` | per-topic message counts |
+| `marker_csv`, `ply_file`, `imu_csv` | matching filename in `<src>_collected/`, else `NaN` |
+| `num_detections`, `num_unique_markers` | row count / unique `marker_id` count in `marker_csv`, else `NaN` |
+
+A recording that aborted early (e.g. camera disconnected mid-capture) shows
+up clearly this way — e.g. depth frames present but `Color_Frames = NaN`
+(no color stream ever arrived), which is also why `marker_csv`/`ply_file`/
+`imu_csv` are `NaN` for it.
+
 ## Running instructions used for tests: 
 ```
 /home/aru/agi/3D-SeaIce/cpp/run rs_marker -n 25 -D /home/aru/Documents/validationTests
@@ -271,7 +375,10 @@ cpp/
 ├── include/                   # shared headers
 ├── src/                       # shared library sources (compiled once)
 ├── tools/
-│   └── summarize_markers.py   # analyse a detections CSV from rs_marker
+│   ├── summarize_markers.py   # analyse a detections CSV from rs_marker
+│   ├── marker_points.py       # extract 3D marker positions from a .bag + detections CSV
+│   ├── collect_plys.py        # gather .bag/.ply/detections/imu files across many recordings
+│   └── tabulate_data.py       # one-row-per-recording metadata CSV from bag headers + collected files
 └── programs/
     ├── rs_record/             # record depth + colour to .bag
     ├── rgb_viewer/            # live RGB preview
