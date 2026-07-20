@@ -86,6 +86,7 @@ cpp/
 │   ├── summarize_markers.py   # analyse a detections CSV from rs_marker
 │   ├── marker_points.py       # extract 3D marker positions from a .bag + detections CSV
 │   ├── collect_plys.py        # gather .bag/.ply/detections/imu files across many recordings
+│   ├── plot_imu.py            # per-recording IMU graphs (PNG) + raw sample CSV from a .bag
 │   └── tabulate_data.py       # one-row-per-recording metadata CSV from bag headers + collected files
 └── programs/
     ├── rs_record/             # record depth + colour to .bag
@@ -314,6 +315,80 @@ timestamp, so they land in the output folder unchanged unless that would
 collide with another file. `imu.csv` is named identically in every session
 folder, so it is always renamed to `<recording_folder>_imu.csv`.
 
+## marker_points.py — extract 3D marker positions
+
+Pairs each `<collected_dir>/detections/<stem>_detections.csv` with its
+`<raw_dir>/<stem>.bag` (matched by timestamp stem), re-samples depth from the
+bag at each detected marker center, and deprojects into the same depth
+optical frame as the reconstructed `.ply` clouds — for overlay/QC in
+CloudCompare, Open3D, etc., or downstream analysis.
+
+```bash
+python3 tools/marker_points.py /media/aru/Seagate/roughness/20260714_raw /media/aru/Seagate/roughness/20260714_collected
+```
+
+By default (`--format csv`) this writes one file per recording to
+`20260714_collected/marker_csv/<stem>.csv`, with one row per unique
+`marker_id`: `marker_id,x,y,z`, where x/y/z is the per-axis median over all
+of that marker's extracted points in the recording (robust to the rare stray
+bad detection).
+
+```bash
+# One point per detection instead (no aggregation), colored by marker_id —
+# handy to eyeball every detected instance at once.
+python3 tools/marker_points.py /media/aru/Seagate/roughness/20260714_raw /media/aru/Seagate/roughness/20260714_collected --format ply
+# -> 20260714_collected/marker_ply/<stem>.ply
+```
+
+Recordings with no matching `.bag`, or whose detections CSV is empty, are
+reported and skipped — everything else is still processed.
+
+**Example output:**
+
+```
+20260714_120301: 3 unique markers -> 20260714_120301.csv
+20260714_120455: no matching bag in 20260714_raw, skipped
+20260714_120612: 4 unique markers -> 20260714_120612.csv
+
+Done: 2 written, 1 missing bag, 0 empty detections -> 20260714_collected/marker_csv
+```
+
+## plot_imu.py — IMU graphs + CSV per recording
+
+Plays back every `.bag` in a folder (e.g. `<src>_raw/`) and extracts its
+accelerometer/gyroscope motion samples, writing one PNG plot and one raw CSV
+per bag — handy for a quick visual sanity check of IMU data alongside the
+`.ply`/detections outputs.
+
+```bash
+python3 tools/plot_imu.py /media/aru/Seagate/roughness/20260714_raw
+```
+
+With no `--graphs-dir`/`--csv-dir`, this writes two folders next to the bags:
+
+| Folder | Contents |
+|--------|----------|
+| `20260714_raw/imu_graphs/` | `<stem>_imu.png` — stacked accel/gyro-over-time figure, x/y/z per panel |
+| `20260714_raw/imu_total/` | `<stem>_imu.csv` — columns `timestamp_ms,stream,x,y,z`, one row per raw motion sample (`stream` is `accel` or `gyro`), sorted by timestamp |
+
+```bash
+# Write graphs/CSVs elsewhere instead of next to the bags
+python3 tools/plot_imu.py /media/aru/Seagate/roughness/20260714_raw --graphs-dir /tmp/graphs --csv-dir /tmp/imu_csv
+```
+
+Bags with no IMU data at all are reported and skipped — everything else is
+still processed.
+
+**Example output:**
+
+```
+20260714_120301: accel=612 samples, gyro=1224 samples -> 20260714_120301_imu.png, 20260714_120301_imu.csv
+20260714_120455: no IMU data found, skipped
+20260714_120612: accel=598 samples, gyro=1198 samples -> 20260714_120612_imu.png, 20260714_120612_imu.csv
+
+Done: 2 written, 1 with no IMU data -> 20260714_raw/imu_graphs, 20260714_raw/imu_total
+```
+
 ## tabulate_data.py — one-row-per-recording metadata table
 
 Assumes `collect_plys.py` default mode has already been run on `src`, so
@@ -405,6 +480,7 @@ cpp/
 │   ├── summarize_markers.py   # analyse a detections CSV from rs_marker
 │   ├── marker_points.py       # extract 3D marker positions from a .bag + detections CSV
 │   ├── collect_plys.py        # gather .bag/.ply/detections/imu files across many recordings
+│   ├── plot_imu.py            # per-recording IMU graphs (PNG) + raw sample CSV from a .bag
 │   └── tabulate_data.py       # one-row-per-recording metadata CSV from bag headers + collected files
 └── programs/
     ├── rs_record/             # record depth + colour to .bag

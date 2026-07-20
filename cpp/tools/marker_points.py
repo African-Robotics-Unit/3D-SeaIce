@@ -19,15 +19,15 @@ matching bag, or with an empty detections CSV, are reported and skipped —
 everything else is still processed.
 
 Output is written to a new subfolder of <collected_dir>:
-    marker_ply/<stem>.ply   (--format ply, default)
-    marker_csv/<stem>.csv   (--format csv)
+    marker_csv/<stem>.csv   (--format csv, default)
+    marker_ply/<stem>.ply   (--format ply)
 
---format ply: one point per CSV row (no aggregation), colored by marker_id,
-              so you can see all detected instances at once and do your own
-              filtering/manipulation afterward.
 --format csv: one row per unique marker_id: marker_id,x,y,z, where x/y/z is
               the per-axis median over all of that marker's extracted points
               in this recording (robust to the rare stray bad detection).
+--format ply: one point per CSV row (no aggregation), colored by marker_id,
+              so you can see all detected instances at once and do your own
+              filtering/manipulation afterward.
 
 CSV columns expected in each detections CSV (header required):
     timestamp_ms,frame,marker_id,cx,cy,depth_m,c0x,c0y,c1x,c1y,c2x,c2y,c3x,c3y
@@ -173,9 +173,9 @@ def main():
     ap.add_argument("raw_dir", type=Path, help="folder of raw .bag recordings")
     ap.add_argument("collected_dir", type=Path,
                      help="collect_plys.py output folder (must contain detections/)")
-    ap.add_argument("--format", choices=["ply", "csv"], default="ply",
-                     help="output type: ply = one point per detection, "
-                          "csv = one row per unique marker_id (default: ply)")
+    ap.add_argument("--format", choices=["ply", "csv"], default="csv",
+                     help="output type: csv = one row per unique marker_id, "
+                          "ply = one point per detection (default: csv)")
     args = ap.parse_args()
 
     detections_dir = args.collected_dir / "detections"
